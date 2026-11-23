@@ -13,25 +13,25 @@ const fs = require('fs');
   await page.screenshot({ path: `${out}/fs_landing.png` });
   const t0 = Date.now();
   await page.click('#demo');
-  await page.waitForSelector('#results:not([hidden])', { timeout: 240000 });
+  await page.waitForSelector('#figures:not(.empty)', { timeout: 240000 });
   await page.waitForTimeout(2500);
   console.log('run seconds', (Date.now() - t0) / 1000);
   console.log('log:', await page.$$eval('#log li', ls => ls.map(l => l.textContent).join(' | ')));
-  console.log('figures:', await page.$$eval('.fig', fs => fs.map(f => f.textContent.replace(/\s+/g, ' ').trim()).join(' || ')));
+  console.log('figures:', await page.$$eval('.kpi', fs => fs.map(f => f.textContent.replace(/\s+/g, ' ').trim()).join(' || ')));
   console.log('zones rows:', await page.$$eval('#zones tbody tr', rs => rs.length));
   await page.screenshot({ path: `${out}/fs_tool.png` });
-  await page.click('#more'); await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}/fs_results.png`, fullPage: false });
-  for (const t of ['lc', 'zones']) { await page.click(`.tabs [data-tab="${t}"]`); await page.waitForTimeout(500); await page.screenshot({ path: `${out}/fs_${t}.png` }); }
-  await page.click('.tabs [data-tab="thr"]'); await page.click('#more');
+  for (const t of ['lc', 'zones', 'images']) { await page.click(`.tabs [data-tab="${t}"]`); await page.waitForTimeout(500); await page.screenshot({ path: `${out}/fs_${t}.png` }); }
+  await page.click('.tabs [data-tab="thr"]');
   for (const k of ['geojson', 'geotiff', 'csv', 'json', 'png']) {
+    await page.click('#dl-btn');
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click(`[data-export="${k}"]`)]);
     const p = `${out}/${dl.suggestedFilename()}`; await dl.saveAs(p); console.log('export', k, fs.statSync(p).size, 'bytes', p);
   }
   // threshold change via the slider after the run
   await page.evaluate(() => { const s = document.getElementById('p-thr'); s.value = -20; s.dispatchEvent(new Event('input')); });  // the slider sits in the closed Settings panel
   await page.waitForTimeout(2500);
-  console.log('figures at -20 dB:', await page.$$eval('.fig b', fs => fs.map(f => f.textContent).join(' | ')));
+  console.log('figures at -20 dB:', await page.$$eval('.kpi .v', fs => fs.map(f => f.textContent).join(' | ')));
   const box = await page.$('#map').then(e => e.boundingBox());
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 1);
   await page.waitForTimeout(1200);

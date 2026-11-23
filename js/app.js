@@ -30,10 +30,9 @@ const map = new maplibregl.Map({
   container: 'map', style: 'https://tiles.openfreemap.org/styles/positron', center: [6.76, 7.8], zoom: 2.2,
   attributionControl: false, preserveDrawingBuffer: true, cooperativeGestures: false,
 });
-// bottom-left: the results drawer covers the bottom-right corner
-map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
+map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
 const ready = new Promise(r => map.on('load', r));
 ready.then(() => {
   map.addSource('s2', { type: 'raster', tileSize: 256, maxzoom: 15, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2024)',
@@ -63,9 +62,10 @@ async function setAoi(b, label) {
   const ok = a <= LIMIT_KM2 && a >= 0.5;
   S.aoi.ok = ok && b[1] >= -56 && b[3] <= 78;
   $('aoi-info').hidden = false;
-  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${ok ? '' : ' warn'}">${fmt(a, 0)} km²</span>${ok ? '' : `<span class="warn small">${a > LIMIT_KM2 ? 'Too large' : 'Too small'}</span>`}`;
+  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${ok ? '' : ' warn'}">${fmt(a, 0)} km²</span>${ok ? '' : `<span class="warn">${a > LIMIT_KM2 ? 'Larger than 3,600 km²; draw a smaller box' : 'Too small'}</span>`}`;
+  summary(0, `${label || 'Area'}, ${fmt(a, 0)} km²`); summary(1, 'Before and after the flood');
   searchSeq++; S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun();
-  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', '<span class="warn small">Outside 56° S to 78° N, where the permanent-water layer exists</span>');
+  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', '<span class="warn">Outside 56° S to 78° N, where the permanent-water layer exists</span>');
   return ok;
 }
 
@@ -127,18 +127,18 @@ async function listImages() {
   const mine = ++searchSeq, aoiAtStart = S.aoi;
   const d0 = $('d0').value, d1 = $('d1').value;
   if (!d0 || !d1 || d0 > d1) { $('pick-info').textContent = 'The start date must be before the end date.'; return; }
-  $('timeline').innerHTML = '<p class="small">Searching the Sentinel-1 archive…</p>';
+  showTab('images'); $('timeline').innerHTML = '<p class="empty-state">Searching the Sentinel-1 archive…</p>';
   try {
     const { list, truncated } = await ask('acquisitions', { bbox: S.aoi.bbox, start: `${d0}T00:00:00Z`, end: `${d1}T23:59:59Z` });
     if (mine !== searchSeq || S.aoi !== aoiAtStart) return;   // the area or the dates changed while searching
     S.acq = list; S.pre = S.post = null; renderTimeline(); updateRun();
-    if (truncated) $('pick-info').insertAdjacentHTML('afterbegin', '<span style="color:#a1271b">Only the first 400 scenes are listed; shorten the date range to see later ones.</span> ');
-  } catch (e) { $('timeline').innerHTML = `<p class="small" style="color:#a1271b">Could not search the archive: ${esc(e.message)}</p>`; }
+    if (truncated) $('pick-info').insertAdjacentHTML('afterbegin', '<span class="warn">Only the first 400 scenes are listed; shorten the date range to see later ones.</span> ');
+  } catch (e) { $('timeline').innerHTML = `<p class="empty-state warn">Could not search the archive: ${esc(e.message)}</p>`; }
 }
 const trackKey = a => `${a.orbitState} · relative orbit ${a.relativeOrbit}`;
 function renderTimeline() {
   const el = $('timeline');
-  if (!S.acq.length) { el.innerHTML = S.aoi ? '' : ''; $('pick-info').textContent = S.aoi ? 'List the images available for this area.' : 'Choose an area first.'; return; }
+  if (!S.acq.length) { el.innerHTML = `<p class="empty-state">${S.aoi ? 'List the images for this area (step 2).' : 'Choose an area, then list the images.'}</p>`; $('pick-info').textContent = S.aoi ? 'List the images available for this area.' : 'Choose an area first.'; return; }
   const groups = new Map();
   for (const a of S.acq) { const k = trackKey(a); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); }
   el.innerHTML = '';
@@ -158,7 +158,8 @@ function renderTimeline() {
     box.append(t); el.append(box);
   }
   $('pick-info').innerHTML = !S.pre ? 'Choose the <strong>before</strong> image.' : !S.post ? `Before: ${S.pre.datetime.slice(0, 10)}. Now choose the <strong>after</strong> image on the same track.`
-    : `Before ${S.pre.datetime.slice(0, 10)} · after ${S.post.datetime.slice(0, 10)}, ${Math.round((Date.parse(S.post.datetime) - Date.parse(S.pre.datetime)) / 864e5)} days apart. Click a date to start again.`;
+    : `Before ${S.pre.datetime.slice(0, 10)}, after ${S.post.datetime.slice(0, 10)}: ${Math.round((Date.parse(S.post.datetime) - Date.parse(S.pre.datetime)) / 864e5)} days apart. Click a date to start again.`;
+  summary(1, S.pre && S.post ? `${S.pre.datetime.slice(0, 10)} to ${S.post.datetime.slice(0, 10)}` : S.pre ? `Before ${S.pre.datetime.slice(0, 10)}; choose after` : 'Before and after the flood');
 }
 function pick(a) {
   if (!S.pre || S.post) { S.pre = a; S.post = null; }
@@ -167,30 +168,37 @@ function pick(a) {
 }
 function updateRun() {
   $('run').disabled = running || !(S.aoi && S.aoi.ok && S.pre && S.post);
-  if (step === 0) $('next').disabled = !(S.aoi && S.aoi.ok);
-  if (step === 1) $('next').disabled = !(S.pre && S.post);
+  $('next-0').disabled = !(S.aoi && S.aoi.ok);
+  $('next-1').disabled = !(S.pre && S.post);
+  setLocks();
 }
 
-// ---------------------------------------------------------------- steps
+// ---------------------------------------------------------------- steps (accordion in the rail)
 let step = 0;
+const reach = k => k === 0 || (k === 1 && S.aoi && S.aoi.ok) || (k === 2 && S.aoi && S.aoi.ok && S.pre && S.post);
+function summary(k, t) { $(`sum-${k}`).textContent = t; }
+const complete = k => k === 0 ? !!(S.aoi && S.aoi.ok) : k === 1 ? !!(S.pre && S.post) : !!S.result;
+function setLocks() {
+  document.querySelectorAll('.step').forEach(el => {
+    const k = +el.dataset.step;
+    el.classList.toggle('locked', !reach(k));
+    el.classList.toggle('done', k !== step && complete(k));
+  });
+}
 function go(n) {
   step = n;
-  document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = +p.dataset.pane !== n; });
-  document.querySelectorAll('.dots button').forEach(b => {
-    const k = +b.dataset.step; if (k === n) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
-    b.classList.toggle('done', k < n);
+  document.querySelectorAll('.step').forEach(el => {
+    const k = +el.dataset.step, open = k === n;
+    el.classList.toggle('open', open); el.querySelector('[data-pane]').hidden = !open; el.querySelector('.step-h').setAttribute('aria-expanded', String(open));
   });
-  $('back').hidden = n === 0; $('next').hidden = n === 2; $('run').hidden = n !== 2;
   if (n === 1 && S.aoi && !S.acq.length) listImages();
+  if (n === 1) showTab('images');
   updateRun();
 }
-document.querySelectorAll('.dots button').forEach(b => b.addEventListener('click', () => {
-  const k = +b.dataset.step;
-  if (k === 0 || (k === 1 && S.aoi && S.aoi.ok) || (k === 2 && S.pre && S.post)) go(k);
-}));
-$('back').addEventListener('click', () => go(step - 1));
-$('next').addEventListener('click', () => go(step + 1));
-const fitBox = b => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 140, left: window.innerWidth > 760 ? 380 : 40, right: 40 }, duration: 900 });
+document.querySelectorAll('.step-h').forEach(h => h.addEventListener('click', () => { const k = +h.parentElement.dataset.step; if (reach(k)) go(k); }));
+$('next-0').addEventListener('click', () => go(1));
+$('next-1').addEventListener('click', () => go(2));
+const fitBox = b => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, duration: 900 });
 
 // ---------------------------------------------------------------- settings
 // with the automatic threshold on, the fallback is always the documented default (-18 dB), never a value left on the slider
@@ -203,14 +211,20 @@ for (const [id, [o, f]] of Object.entries(outs)) $(id).addEventListener('input',
 
 // ---------------------------------------------------------------- run
 const log = $('log');
-function logLine(msg, cls = '') { log.querySelectorAll('li.now').forEach(li => li.classList.remove('now')); const li = document.createElement('li'); li.textContent = msg; if (cls) li.className = cls; log.append(li); li.scrollIntoView({ block: 'nearest' }); }
+const STEPS_EXPECTED = 14;   // progress messages in a typical run (pipeline.runAnalysis), used only for the bar
+function logLine(msg, cls = '') {
+  log.querySelectorAll('li.now').forEach(li => li.classList.remove('now'));
+  const li = document.createElement('li'); li.textContent = msg; if (cls) li.className = cls; log.append(li);
+  $('status').hidden = false; $('msg').textContent = msg; $('msg').className = cls === 'err' ? 'msg err' : 'msg';
+  $('bar').style.width = `${Math.min(100, log.children.length / STEPS_EXPECTED * 100)}%`;
+}
 $('run').addEventListener('click', runNow);
 let running = false;
 async function runNow() {
   if (running || !S.aoi || !S.pre || !S.post) return;
   running = true; clearTimeout(rcTimer);
-  $('run').disabled = true; $('demo').disabled = true; log.innerHTML = ''; $('log-box').hidden = false; $('log-box').open = true;
-  S.result = null; $('results').hidden = true; $('inspect').hidden = true; $('exports').hidden = true;
+  $('run').disabled = true; $('demo').disabled = true; log.innerHTML = '';
+  S.result = null; $('inspect').hidden = true; $('figures').classList.add('empty'); summary(2, 'Running');
   logLine('Starting', 'now');
   let zones = null;
   if ($('p-zones').checked) zones = await loadZones(S.aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
@@ -218,10 +232,10 @@ async function runNow() {
     const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [S.aoi.ring] }, pre: S.pre, post: S.post, params: P(), base: BASE, zones, label: S.aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
     log.querySelectorAll('li.now').forEach(li => li.classList.remove('now'));
-    S.result = r; S.zonesSource = zones ? zones.source : null; $('log-box').open = false;
+    S.result = r; S.zonesSource = zones ? zones.source : null; $('bar').style.width = '100%';
     $('p-thr').value = r.threshold.value; $('o-thr').textContent = `${fmt(r.threshold.value)} dB`.replace('-', '−');
     await drawResult(r, true);
-  } catch (e) { logLine(e.message, 'err'); }
+  } catch (e) { logLine(e.message, 'err'); summary(2, 'Failed; see the message below'); }
   finally { running = false; $('demo').disabled = false; updateRun(); }
 }
 
@@ -282,7 +296,8 @@ async function drawResult(r, fit) {
     fitBox([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]);
   }
   renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r);
-  $('results').hidden = false; $('exports').hidden = false; $('r-title').textContent = 'Flood map';
+  $('thr-empty').hidden = true;
+  if (fit) showTab('thr');
 }
 function paintClasses(cls, g) {
   const c = document.createElement('canvas'); c.width = g.w; c.height = g.h;
@@ -343,7 +358,7 @@ map.on('click', async e => {
   const { values: v } = await ask('inspect', { index: r * g.w + c });
   const dB = q => q == null ? '—' : `${fmt(q)} dB`.replace('-', '−');
   box.hidden = false;
-  box.innerHTML = `<button class="link" type="button" style="float:right;font-size:12px" onclick="this.parentElement.hidden=true">Close</button><div class="meta">Pixel ${c}, ${r} · ${fmt(e.lngLat.lat, 4)}°, ${fmt(e.lngLat.lng, 4)}°</div><dl>
+  box.innerHTML = `<button class="x" type="button" onclick="this.parentElement.hidden=true">Close</button><div class="muted">Pixel ${c}, ${r} · ${fmt(e.lngLat.lat, 4)}°, ${fmt(e.lngLat.lng, 4)}°</div><dl>
     <dt>Class</dt><dd>${esc(CLASS_NAMES[v.cls])}</dd>
     <dt>VV before</dt><dd>${dB(v.preVV)}</dd><dt>VV after</dt><dd>${dB(v.postVV)}</dd>
     <dt>VV change</dt><dd>${v.preVV == null || v.postVV == null ? '—' : dB(v.postVV - v.preVV)}</dd>
@@ -358,48 +373,61 @@ map.on('click', async e => {
 function renderFigures(r) {
   const s = r.summary, a = s.areaKm2, m = r.meta;
   const d = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-  $('r-sub').textContent = `${d(m.pre.datetime)} to ${d(m.post.datetime)}. Threshold ${fmt(r.threshold.value)} dB.`.replace(/-(\d)/g, '−$1');
-  const share = a.valid ? a.flood / a.valid * 100 : 0;
-  $('figures').innerHTML = [
-    [fmt(a.flood, a.flood < 10 ? 2 : 1), `km² new water (${fmt(share)}% of ${fmt(a.valid, 0)} km²)`],
-    [fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), m.post.polarisations === 'VV, VH' ? 'km² high confidence (VV and VH)' : 'km² high confidence (no VH)'],
-    [fmtInt(s.population.inFlood), 'modelled residents in it'],
-    [fmt(a.permanent, 1), 'km² permanent water, excluded'],
-  ].map(([v, u]) => `<div class="fig"><b class="num">${v}</b><span>${u}</span></div>`).join('');
+  const neg = t => t.replace(/-(\d)/g, '−$1');
+  $('r-title').textContent = m.label || 'Flood map';
+  $('r-sub').textContent = neg(`${d(m.pre.datetime)} to ${d(m.post.datetime)}, ${m.post.platform} ${m.post.orbitState} orbit ${m.post.relativeOrbit}. Water threshold ${fmt(r.threshold.value)} dB, ${r.threshold.source === 'otsu' ? 'automatic (Otsu)' : /^default/.test(r.threshold.source) ? 'default; automatic split not usable here' : 'set by you'}.`);
+  summary(2, neg(`Done: ${fmt(a.flood, a.flood < 10 ? 2 : 1)} km² at ${fmt(r.threshold.value)} dB`));
+  const share = a.valid ? a.flood / a.valid * 100 : 0, vh = m.post.polarisations === 'VV, VH';
+  const k = [
+    ['New water', fmt(a.flood, a.flood < 10 ? 2 : 1), 'km²', `${fmt(share)}% of the ${fmt(a.valid, 0)} km² with valid radar`],
+    ['High confidence', fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), 'km²', vh ? `Plus ${fmt(a.floodMedium, 2)} km² where only VV darkened` : 'No VH in these images'],
+    ['Modelled residents', fmtInt(s.population.inFlood), '', `${fmtInt(s.population.inFloodHigh)} of them in high-confidence water`],
+    ['Permanent water', fmt(a.permanent, 1), 'km²', `Excluded, plus ${fmt(a.waterBefore, 1)} km² wet before`],
+  ];
+  $('figures').classList.remove('empty');
+  $('figures').innerHTML = k.map(([l, v, u, t]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div><div class="d" title="${esc(t)}">${esc(t)}</div></div>`).join('');
 }
 function renderLandcover(r) {
   const e = Object.entries(r.summary.landcoverKm2), max = Math.max(...e.map(x => x[1]), 1e-9);
-  $('lc').innerHTML = e.length ? e.map(([k, v]) => `<div class="bar"><span>${esc(WORLDCOVER[k] || k)}</span><span class="track-b"><span class="fill" style="display:block;width:${(v / max * 100).toFixed(1)}%"></span></span><span class="num">${fmt(v, 2)}</span></div>`).join('')
-    : '<p class="small">No flood water found with these settings.</p>';
+  $('lc').innerHTML = e.length ? `<div class="bars">${e.sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="b"><span>${esc(WORLDCOVER[k] || k)}</span><span class="n">${fmt(v, 2)} km²</span><span class="tr"><i style="width:${(v / max * 100).toFixed(1)}%"></i></span></div>`).join('')}</div>`
+    : '<p class="empty-state">No flood water found with these settings.</p>';
 }
 function renderZones(r) {
   const z = r.summary.zones;
-  if (!z || !z.length) { $('zones').innerHTML = S.zonesSource ? '<p class="small">No flood water inside the administrative areas found.</p>' : ''; return; }
-  $('zones').innerHTML = `<table class="t"><thead><tr><th>Area</th><th style="text-align:right">Flooded km²</th><th style="text-align:right">Modelled residents</th></tr></thead><tbody>${
+  if (!z || !z.length) { $('zones').innerHTML = S.zonesSource ? '<p class="empty-state">No flood water inside the administrative areas found.</p>' : '<p class="empty-state">Administrative areas were not loaded for this run.</p>'; return; }
+  $('zones').innerHTML = `<table class="t"><thead><tr><th>Area</th><th class="n">Flooded km²</th><th class="n">Residents</th></tr></thead><tbody>${
     z.slice(0, 25).map(q => `<tr><td>${esc(q.name)}</td><td class="n">${fmt(q.floodKm2, 2)}</td><td class="n">${fmtInt(q.population)}</td></tr>`).join('')}</tbody></table>
     <p class="note">Only the part of each area inside the analysed box is counted. ${esc(S.zonesSource || '')}${z.length > 25 ? ` · ${z.length - 25} more in the CSV` : ''}</p>`;
 }
 
 // histogram with a draggable threshold
 const H = $('hist'), hctx = H.getContext('2d');
+// drawn in CSS pixels at the panel's width, sharp on high-density screens; axis in dB, bar height on a square-root scale
+const HIST_H = 240;
 function drawHist(r) {
-  const W = H.width, Hh = H.height, pad = { l: 34, r: 8, t: 10, b: 28 }, h = r.hist, max = Math.max(...h, 1);
+  const W = H.clientWidth || H.parentElement.clientWidth || 340, Hh = HIST_H, dpr = window.devicePixelRatio || 1;
+  if (H.width !== Math.round(W * dpr)) { H.width = Math.round(W * dpr); H.height = Math.round(Hh * dpr); H.style.height = `${Hh}px`; }
+  hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pad = { l: 8, r: 8, t: 22, b: 26 }, h = r.hist, max = Math.max(...h, 1);
   hctx.clearRect(0, 0, W, Hh);
   const X = db => pad.l + (db + 30) / 30 * (W - pad.l - pad.r), Y = v => Hh - pad.b - Math.sqrt(v / max) * (Hh - pad.t - pad.b);
   const t = r.threshold.value;
   for (let i = 0; i < h.length; i++) {
-    const db = -30 + i / 10; hctx.fillStyle = db < t ? '#1554c0' : '#bdbdb8';
+    const db = -30 + i / 10; hctx.fillStyle = db < t ? '#1f5fbf' : '#c4cad1';
     hctx.fillRect(X(db), Y(h[i]), Math.max(1, X(db + 0.1) - X(db)), Hh - pad.b - Y(h[i]));
   }
-  hctx.strokeStyle = '#141412'; hctx.lineWidth = 2; hctx.beginPath(); hctx.moveTo(X(t), pad.t - 4); hctx.lineTo(X(t), Hh - pad.b); hctx.stroke();
-  hctx.fillStyle = '#141412'; hctx.font = '12px "Geist Mono", monospace'; hctx.textAlign = 'center';
-  for (let d = -30; d <= 0; d += 5) hctx.fillText(String(d).replace('-', '−'), X(d), Hh - 10);
-  hctx.textAlign = 'left'; hctx.fillText(`${fmt(t)} dB`.replace('-', '−'), Math.min(X(t) + 6, W - 70), pad.t + 8);
-  hctx.fillStyle = '#6a6963'; hctx.fillText('dB', 4, Hh - 10);
-  H.dataset.pad = JSON.stringify(pad);
+  hctx.strokeStyle = '#dde1e5'; hctx.lineWidth = 1; hctx.beginPath(); hctx.moveTo(pad.l, Hh - pad.b + 0.5); hctx.lineTo(W - pad.r, Hh - pad.b + 0.5); hctx.stroke();
+  hctx.strokeStyle = '#16191d'; hctx.lineWidth = 2; hctx.beginPath(); hctx.moveTo(X(t), pad.t - 6); hctx.lineTo(X(t), Hh - pad.b); hctx.stroke();
+  hctx.fillStyle = '#6b737d'; hctx.font = '12px Satoshi, system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
+  for (let d = -30; d <= 0; d += 5) hctx.fillText(`${String(d).replace('-', '−')}${d === 0 ? ' dB' : ''}`, Math.min(Math.max(X(d), 14), W - 18), Hh - 8);
+  hctx.fillStyle = '#16191d'; hctx.font = '600 12.5px Satoshi, system-ui, sans-serif';
+  const lab = `Water below ${fmt(t)} dB`.replace('-', '−');
+  hctx.textAlign = X(t) > W - 140 ? 'right' : 'left'; hctx.fillText(lab, X(t) + (hctx.textAlign === 'left' ? 6 : -6), pad.t - 8);
+  H.dataset.pad = JSON.stringify(pad); H.dataset.w = W;
 }
+window.addEventListener('resize', () => { if (S.result && !document.querySelector('[data-tabpane="thr"]').hidden) drawHist(S.result); });
 let dragH = false;
-const hDb = ev => { const b = H.getBoundingClientRect(), pad = JSON.parse(H.dataset.pad), x = (ev.clientX - b.left) / b.width * H.width; return Math.max(-26, Math.min(-12, -30 + (x - pad.l) / (H.width - pad.l - pad.r) * 30)); };
+const hDb = ev => { const b = H.getBoundingClientRect(), pad = JSON.parse(H.dataset.pad), x = ev.clientX - b.left; return Math.max(-26, Math.min(-12, -30 + (x - pad.l) / (b.width - pad.l - pad.r) * 30)); };
 H.addEventListener('pointerdown', ev => { if (!S.result) return; dragH = true; H.setPointerCapture(ev.pointerId); move(ev); });
 H.addEventListener('pointermove', ev => dragH && move(ev));
 H.addEventListener('pointerup', () => { dragH = false; });
@@ -427,7 +455,7 @@ document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('clic
     if (kind === 'pdf') return printReport();
     const { blob } = await ask('export', { kind });
     save(blob, `${stem}_${NAMES[kind]}`);
-  } catch (e) { alert(`Export failed: ${e.message}`); }
+  } catch (e) { $('r-sub').textContent = `Download failed: ${e.message}`; }
 }));
 function save(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 async function mapPng() {
@@ -480,17 +508,18 @@ $('demo').addEventListener('click', async () => {
   go(2); runNow();
 });
 
-// ---------------------------------------------------------------- drawer and about
-$('more').addEventListener('click', () => {
-  const open = $('drawer-body').hidden; $('drawer-body').hidden = !open; $('more').setAttribute('aria-expanded', String(open)); $('more').textContent = open ? 'Hide' : 'Details';
-});
-document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-  document.querySelectorAll('[data-tabpane]').forEach(p => { p.hidden = p.dataset.tabpane !== b.dataset.tab; });
-}));
-$('ctl-toggle').addEventListener('click', () => { const o = $('mapctl').classList.toggle('open'); $('ctl-toggle').setAttribute('aria-expanded', String(o)); });
+// ---------------------------------------------------------------- tabs, downloads menu, about
+function showTab(t) {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === t)));
+  document.querySelectorAll('[data-tabpane]').forEach(p => { p.hidden = p.dataset.tabpane !== t; });
+  if (t === 'thr' && S.result) drawHist(S.result);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('dl-menu').addEventListener('toggle', () => { if ($('dl-menu').open && !S.result) { $('dl-menu').open = false; $('r-sub').textContent = 'Map a flood first; downloads are made from the result.'; } });
+document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => { $('dl-menu').open = false; }));
+document.addEventListener('click', e => { if ($('dl-menu').open && !$('dl-menu').contains(e.target)) $('dl-menu').open = false; });
 $('about-open').addEventListener('click', () => { $('about').hidden = false; $('about-close').focus(); });
 $('about-close').addEventListener('click', () => { $('about').hidden = true; $('about-open').focus(); });
 $('about').addEventListener('click', e => { if (e.target === $('about')) $('about').hidden = true; });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('about').hidden = true; if (drawing) setDraw(false); } });
-go(0);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('about').hidden = true; $('dl-menu').open = false; if (drawing) setDraw(false); } });
+renderTimeline(); go(0);

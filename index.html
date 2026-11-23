@@ -7,117 +7,138 @@
 <meta name="description" content="Map where flood water appeared between two Sentinel-1 radar images, anywhere between 56° S and 78° N, and estimate the people and land cover inside it. Runs in your browser on open data.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
-<link rel="stylesheet" href="css/tool.css">
+<link rel="stylesheet" href="css/dash.css">
 <link rel="stylesheet" href="css/floodscope.css">
 <script src="vendor/maplibre-gl.js"></script>
 </head>
 <body>
-<div id="map" role="region" aria-label="Map"></div>
-
-<header class="bar">
-  <a class="brand" href="./"><i></i>FloodScope</a>
-  <nav>
-    <button class="pill" id="about-open" type="button">About</button>
-    <a class="pill hide-sm" href="https://github.com/oloyededavid/FloodScope">Code</a>
-  </nav>
-</header>
-
-<section class="panel" aria-label="Steps">
-  <div class="dots">
-    <button type="button" data-step="0" aria-current="step">1 Area</button>
-    <button type="button" data-step="1">2 Images</button>
-    <button type="button" data-step="2">3 Flood map</button>
-  </div>
-
-  <div class="pane" data-pane="0">
-    <h2>Choose an area</h2>
-    <p class="lead">Search for a place or draw a box. Up to 3,600 km².</p>
-    <form id="search" class="row" role="search">
-      <label class="vh" for="q">Place</label>
-      <input id="q" class="input" type="search" placeholder="Town or river" autocomplete="off">
-      <button class="btn" type="submit" style="flex:0">Search</button>
-    </form>
-    <ul id="search-results" class="list" hidden></ul>
-    <div class="row" style="margin-top:10px">
-      <button class="btn" id="draw" type="button" aria-pressed="false">Draw a box</button>
-      <button class="btn" id="demo" type="button">Example: Lokoja 2022</button>
+<div class="app">
+  <aside class="rail" aria-label="Analysis steps">
+    <a class="brand" href="./"><i></i><b>FloodScope</b></a>
+    <div class="steps">
+      <section class="step open" data-step="0">
+        <button class="step-h" type="button" aria-expanded="true"><span class="n">1</span><span class="t">Area</span><span class="s" id="sum-0">Search a place or draw a box</span></button>
+        <div class="step-b" data-pane="0">
+          <form id="search" class="row" role="search" style="gap:6px">
+            <label class="vh" for="q">Place</label>
+            <input id="q" class="in" type="search" placeholder="Town or river" autocomplete="off">
+            <button class="rb" type="submit" style="flex:0">Search</button>
+          </form>
+          <ul id="search-results" class="list" hidden></ul>
+          <div class="row" style="margin-top:8px">
+            <button class="rb" id="draw" type="button" aria-pressed="false">Draw a box</button>
+            <button class="rb" id="demo" type="button">Lokoja example</button>
+          </div>
+          <div class="chosen" id="aoi-info" hidden></div>
+          <p class="small" style="margin:10px 0 0">Up to 3,600 km², between 56° S and 78° N.</p>
+          <button class="rb go wide" id="next-0" type="button" disabled>Continue</button>
+        </div>
+      </section>
+      <section class="step locked" data-step="1">
+        <button class="step-h" type="button" aria-expanded="false"><span class="n">2</span><span class="t">Radar images</span><span class="s" id="sum-1">Before and after the flood</span></button>
+        <div class="step-b" data-pane="1" hidden>
+          <div class="row">
+            <label class="f">From<input class="in" type="date" id="d0" value="2022-07-01" min="2014-10-03"></label>
+            <label class="f">To<input class="in" type="date" id="d1" value="2022-11-30" min="2014-10-03"></label>
+          </div>
+          <button class="rb wide" id="list" type="button" style="margin-top:0">List images</button>
+          <p class="small" id="pick-info" style="margin:10px 0 0"></p>
+          <button class="rb go wide" id="next-1" type="button" disabled>Continue</button>
+        </div>
+      </section>
+      <section class="step locked" data-step="2">
+        <button class="step-h" type="button" aria-expanded="false"><span class="n">3</span><span class="t">Flood map</span><span class="s" id="sum-2">Rules and run</span></button>
+        <div class="step-b" data-pane="2" hidden>
+          <label class="check"><input type="checkbox" id="p-auto" checked> Automatic water threshold when the histogram allows</label>
+          <details>
+            <summary>Rules</summary>
+            <label class="f">Water threshold, VV after <output id="o-thr">−18.0 dB</output><input type="range" id="p-thr" min="-26" max="-12" step="0.1" value="-18"></label>
+            <label class="f">Darkening needed <output id="o-chg">−3.0 dB</output><input type="range" id="p-chg" min="-8" max="-1" step="0.5" value="-3"></label>
+            <label class="f">Slope limit <output id="o-slp">5°</output><input type="range" id="p-slp" min="1" max="15" step="1" value="5"></label>
+            <label class="f">Permanent water from <output id="o-occ">80%</output> of years<input type="range" id="p-occ" min="50" max="100" step="5" value="80"></label>
+          </details>
+          <label class="check"><input type="checkbox" id="p-zones" checked> Break down by administrative area</label>
+          <button class="rb go wide" id="run" type="button" disabled>Map the flood</button>
+        </div>
+      </section>
     </div>
-    <p class="chosen" id="aoi-info" hidden></p>
-  </div>
-
-  <div class="pane" data-pane="1" hidden>
-    <h2>Before and after</h2>
-    <p class="lead">Pick a radar image before the flood, then one after it on the same track.</p>
-    <div class="row">
-      <label class="field">From<input class="input" type="date" id="d0" value="2022-07-01" min="2014-10-03"></label>
-      <label class="field">To<input class="input" type="date" id="d1" value="2022-11-30" min="2014-10-03"></label>
+    <div class="status" id="status" hidden>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="msg" id="msg" aria-live="polite"></div>
+      <details><summary>Processing log</summary><ol class="log" id="log"></ol></details>
     </div>
-    <button class="btn wide" id="list" type="button">List images</button>
-    <div class="timeline" id="timeline" aria-live="polite"></div>
-    <p class="small" id="pick-info"></p>
-  </div>
+  </aside>
 
-  <div class="pane" data-pane="2" hidden>
-    <h2 id="r-title">Map the flood</h2>
-    <p class="lead" id="r-sub">Water that appeared between the two images, with slopes and permanent water removed.</p>
-    <details class="more settings">
-      <summary>Settings</summary>
-      <label class="check"><input type="checkbox" id="p-auto" checked> Automatic water threshold (Otsu) when the histogram allows</label>
-      <label>Water threshold, VV after <output id="o-thr">−18.0 dB</output><input type="range" id="p-thr" min="-26" max="-12" step="0.1" value="-18"></label>
-      <label>Darkening needed <output id="o-chg">−3.0 dB</output><input type="range" id="p-chg" min="-8" max="-1" step="0.5" value="-3"></label>
-      <label>Slope limit <output id="o-slp">5°</output><input type="range" id="p-slp" min="1" max="15" step="1" value="5"></label>
-      <label>Permanent water from <output id="o-occ">80%</output> of years<input type="range" id="p-occ" min="50" max="100" step="5" value="80"></label>
-      <label class="check"><input type="checkbox" id="p-zones" checked> Break down by administrative area</label>
-    </details>
-    <details class="more" id="log-box" hidden><summary>Processing log</summary><ol class="log" id="log" aria-live="polite"></ol></details>
-    <div class="dl" id="exports" hidden style="margin-top:12px">
-      <button class="btn" type="button" data-export="geojson">GeoJSON</button>
-      <button class="btn" type="button" data-export="geotiff">GeoTIFF</button>
-      <button class="btn" type="button" data-export="csv">CSV</button>
-      <button class="btn" type="button" data-export="json">JSON</button>
-      <button class="btn" type="button" data-export="png">Map PNG</button>
-      <button class="btn" type="button" data-export="pdf">Report</button>
+  <main class="main">
+    <header class="head">
+      <div class="title">
+        <h1 id="r-title">Flood extent from Sentinel-1 radar</h1>
+        <p class="sub" id="r-sub">Where open water appeared between two radar images, and who lived there.</p>
+      </div>
+      <details class="menu" id="dl-menu">
+        <summary class="hb" id="dl-btn">Download</summary>
+        <div class="menu-list">
+          <button type="button" data-export="geojson">Flood extent<span>GeoJSON polygons</span></button>
+          <button type="button" data-export="geotiff">Class grid<span>GeoTIFF, UTM</span></button>
+          <button type="button" data-export="csv">Statistics<span>CSV</span></button>
+          <button type="button" data-export="json">Processing record<span>JSON</span></button>
+          <button type="button" data-export="png">Map image<span>PNG</span></button>
+          <button type="button" data-export="pdf">Report<span>Print or save as PDF</span></button>
+        </div>
+      </details>
+      <button class="hb" id="about-open" type="button">About</button>
+    </header>
+
+    <section class="kpis empty" id="figures" aria-label="Key figures">
+      <div class="kpi"><div class="l">New water</div><div class="v">–</div><div class="d">km² flooded between the images</div></div>
+      <div class="kpi"><div class="l">High confidence</div><div class="v">–</div><div class="d">VV and VH both darkened</div></div>
+      <div class="kpi"><div class="l">Modelled residents</div><div class="v">–</div><div class="d">GHS-POP 2025, inside the flood</div></div>
+      <div class="kpi"><div class="l">Permanent water</div><div class="v">–</div><div class="d">km² excluded</div></div>
+    </section>
+
+    <div class="body">
+      <div class="mapwrap">
+        <div id="map" role="region" aria-label="Map"></div>
+        <div class="legend" id="legend" hidden></div>
+        <div class="card" id="inspect" hidden aria-live="polite"></div>
+      </div>
+
+      <section class="panel" aria-label="Evidence">
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="images" aria-selected="true">Images</button>
+          <button type="button" role="tab" data-tab="thr" aria-selected="false">Threshold</button>
+          <button type="button" role="tab" data-tab="lc" aria-selected="false">Land cover</button>
+          <button type="button" role="tab" data-tab="zones" aria-selected="false">Areas</button>
+        </div>
+        <div class="tabpane" data-tabpane="images">
+          <h2>Sentinel-1 images over the area</h2>
+          <p>Pick a before image, then an after image on the same track. Tracks differ in viewing angle, so only images on one track can be compared.</p>
+          <div class="timeline" id="timeline" aria-live="polite"></div>
+        </div>
+        <div class="tabpane" data-tabpane="thr" hidden>
+          <h2>Water threshold</h2>
+          <p>Radar backscatter after the event, for the pixels the threshold applies to. Water is dark. Drag the line, or use the arrow keys, to move the threshold; the map and figures update.</p>
+          <canvas class="chart" id="hist" width="720" height="280" tabindex="0" role="img" aria-label="Histogram of radar backscatter after the event, with the water threshold"></canvas>
+          <p class="empty-state" id="thr-empty">Map a flood to see the histogram.</p>
+        </div>
+        <div class="tabpane" data-tabpane="lc" hidden>
+          <h2>Flooded land cover</h2>
+          <p>Flooded area by ESA WorldCover 2021 class.</p>
+          <div id="lc"><p class="empty-state">Map a flood to see its land cover.</p></div>
+        </div>
+        <div class="tabpane" data-tabpane="zones" hidden>
+          <h2>By administrative area</h2>
+          <div id="zones"><p class="empty-state">Map a flood to see the areas it covers.</p></div>
+          <p class="note">Modelled residents are GHS-POP 2025 estimates spread evenly inside each 1 km cell, not counts of people affected.</p>
+        </div>
+      </section>
     </div>
-  </div>
-
-  <div class="pane-nav">
-    <button class="btn" id="back" type="button" hidden>Back</button>
-    <span></span>
-    <button class="btn primary" id="next" type="button" disabled>Next</button>
-    <button class="btn primary" id="run" type="button" disabled hidden>Map the flood</button>
-  </div>
-</section>
-
-<div class="mapctl" id="mapctl">
-  <button class="pill ctl-toggle" id="ctl-toggle" type="button" aria-expanded="false">Layers</button>
-  <div class="legend" id="legend" hidden></div>
-  <div class="inspect" id="inspect" hidden aria-live="polite"></div>
+  </main>
 </div>
-
-<section class="drawer" id="results" hidden aria-label="Results">
-  <div class="drawer-head">
-    <div class="figs" id="figures"></div>
-    <button class="btn" id="more" type="button" aria-expanded="false">Details</button>
-  </div>
-  <div class="drawer-body" id="drawer-body" hidden>
-    <div class="tabs" role="tablist">
-      <button type="button" role="tab" data-tab="thr" aria-selected="true">Threshold</button>
-      <button type="button" role="tab" data-tab="lc" aria-selected="false">Land cover</button>
-      <button type="button" role="tab" data-tab="zones" aria-selected="false">Areas</button>
-    </div>
-    <div data-tabpane="thr">
-      <p class="small" style="margin:0 0 6px">VV backscatter after the event, for pixels the threshold applies to. Drag the line (or use the arrow keys) to change the threshold; the map and numbers update.</p>
-      <canvas id="hist" width="760" height="200" role="img" aria-label="Histogram of radar backscatter after the event, with the water threshold"></canvas>
-    </div>
-    <div data-tabpane="lc" hidden><p class="small" style="margin:0 0 6px">Flooded area by ESA WorldCover 2021 class, km².</p><div id="lc"></div></div>
-    <div data-tabpane="zones" hidden><div id="zones"></div></div>
-    <p class="note">Modelled residents are GHS-POP 2025 estimates spread evenly inside each 1 km cell, not counts of people affected. Radar misses water under trees and between buildings, and can mistake smooth dry ground for water.</p>
-  </div>
-</section>
 
 <div class="sheet" id="about" hidden role="dialog" aria-modal="true" aria-labelledby="about-h">
   <article>
-    <button class="btn close" id="about-close" type="button">Close</button>
+    <button class="hb x" id="about-close" type="button">Close</button>
     <h2 id="about-h">About FloodScope</h2>
     <p>FloodScope compares two Sentinel-1 radar images of the same place, one before and one after a flood, and maps the ground that turned to open water. It then counts the modelled population and the land cover inside that water. Radar sees through cloud. Everything runs in your browser on open data, for any place between 56° S and 78° N since October 2014.</p>
     <h3>Method</h3>
@@ -137,7 +158,7 @@
       <tr><td>Land cover</td><td>ESA WorldCover 2021 v200 (Zanaga et al., 2022). CC BY 4.0.</td></tr>
       <tr><td>Population</td><td>GHS-POP R2023A, epoch 2025 (Schiavina et al., 2023), EC JRC. CC BY 4.0.</td></tr>
       <tr><td>Boundaries</td><td>geoBoundaries gbOpen (Runfola et al., 2020).</td></tr>
-      <tr><td>Basemap</td><td>OpenFreeMap (© OpenStreetMap contributors); Sentinel-2 cloudless by EOX IT Services. Place search by Nominatim.</td></tr>
+      <tr><td>Basemap</td><td>OpenFreeMap (© OpenStreetMap contributors); Sentinel-2 cloudless 2024 by EOX IT Services. Place search by Nominatim.</td></tr>
     </table>
     <h3>Limits</h3>
     <ul>
