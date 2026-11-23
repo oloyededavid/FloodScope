@@ -1,7 +1,7 @@
 {
  "reference": "UNOSAT FL20221019NGA, VIIRS cumulative satellite-detected water 13-17 Oct 2022 (CC BY-SA). Not ground truth.",
  "floodscope_grid": {
-  "file": "class grid exported by FloodScope from the Lokoja example (tests/browser_e2e.cjs)",
+  "file": "class grid exported by the browser run (tests/browser_e2e.cjs)",
   "resolution_m": 20.0,
   "crs": "EPSG:32632"
  },

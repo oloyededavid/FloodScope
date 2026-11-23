@@ -1,0 +1,4 @@
+# Population conservation, Lokoja box 6.7-6.85 E, 7.7-7.85 N (2026-11-23)
+GHS-POP cells covering the box (19 x 19), edge cells weighted by the fraction inside: 553932.5 persons
+FloodScope engine, modelled residents in the drawn box (all pixels): 554219.3 persons
+relative difference: 0.052%

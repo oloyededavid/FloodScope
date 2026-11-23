@@ -68,7 +68,7 @@ export function traceMask(mask, w, h) {
     // a ring that passes the same vertex twice (two holes touching at a corner) is split there into simple rings
     for (const sr of splitPinches(r)) { sr.push(sr[0]); rings.push(sr); }
   }
-  // signed area in pixel space (y down): outer rings are clockwise on screen, holes counter-clockwise
+  // signed area in pixel space (y down): outer rings come out negative (counter-clockwise as seen on screen), holes positive
   const signed = r => { let s = 0; for (let i = 0; i + 1 < r.length; i++) s += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1]; return s / 2; };
   const outers = [], holes = [];
   for (const r of rings) (signed(r) < 0 ? outers : holes).push(r);
@@ -105,7 +105,8 @@ export function floodGeoJSON(cls, grid, meta, classes = [CLS.FLOOD_HIGH, CLS.FLO
   return { type: 'FeatureCollection', name: 'FloodScope flood extent', floodscope: meta, features };
 }
 
-const csvCell = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+// text cells that start with = + - @ are prefixed with ' so spreadsheet programs do not run them as formulas
+const csvCell = v => { let s = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 
 /** Summary statistics as CSV: one block per table, each with a header row. */
@@ -120,7 +121,8 @@ export function summaryCsv(summary, meta, params) {
     ['area', 'flood, medium confidence', a.floodMedium, 'km2'], ['area', 'permanent water', a.permanent, 'km2'], ['area', 'water before the event', a.waterBefore, 'km2'],
     ['area', 'excluded for slope', a.steep, 'km2'],
     ['population', 'modelled residents in flood', p.inFlood, 'persons (GHS-POP 2025)'], ['population', 'of which high-confidence flood', p.inFloodHigh, 'persons'],
-    ['population', 'modelled residents in analysed area', p.inValidArea, 'persons']];
+    ['population', 'modelled residents in analysed area', p.inValidArea, 'persons'], ['population', 'modelled residents in the drawn area', p.inAoi, 'persons'],
+    ['population', 'analysed pixels without population data', p.pixelsWithoutPopulation, 'pixels'], ['run', 'area basis', 'ground area: UTM pixel area / k^2 per column', '']];
   for (const [k, v] of Object.entries(summary.landcoverKm2)) rows.push(['flooded land cover', WORLDCOVER[k] || k, v, 'km2']);
   for (const z of summary.zones || []) rows.push(['administrative area', z.name, z.floodKm2, 'km2 flooded'], ['administrative area', z.name, z.population, 'persons in flood']);
   return csv(rows);

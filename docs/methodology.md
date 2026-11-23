@@ -24,14 +24,15 @@ FloodScope maps **change to open water seen by C-band radar**. Its outputs are n
 
 ## 3. Pre-processing
 
-1. **Comparable pair.** Before and after must share the relative orbit and pass, and before must be earlier (`pipeline.runAnalysis`). This keeps incidence angle and terrain geometry the same, so a change in backscatter is not an artefact of a different view.
+1. **Comparable pair.** Before and after must share the relative orbit and pass, and before must be earlier (`pipeline.runAnalysis`). This keeps incidence angle and terrain geometry the same, so a change in backscatter is not an artefact of a different view. Slices of one datatake are merged into one acquisition (`pipeline.listAcquisitions`), so an area across a slice boundary is read from both slices. Scenes without VV (HH/HV over polar regions) are not offered. The analysis is limited to 56° S – 78° N, the coverage of the permanent-water layer.
 2. **Grid.**
    - The grid uses the after scene's UTM zone (from the STAC `proj:epsg`), with its origin snapped to multiples of the resolution (`engine.makeGrid`).
    - Resolution is 20 m for areas up to 900 km² and 40 m up to 3,600 km². Larger areas are refused (`engine.resolutionFor`).
    - The area is the user's rectangle. Pixels whose centre lies outside it are no-data (`engine.rasterisePolygons`).
 3. **Radar onto the grid.**
-   - Linear power is averaged from the 10 m pixels whose centres fall in each grid pixel (`io.readToGrid`, method `average`). For a 40 m grid this uses the 20 m overview.
-   - Averaging power is the multilooking step of SAR processing. GDAL's `average` resampling gives the same result (section 8).
+   - Linear power is averaged from the native 10 m pixels whose centres fall in each grid pixel (`io.readToGrid`, method `average`), at both 20 m and 40 m. The provider's overviews are not used, because their resampling is not documented.
+   - Large grids are read in bands of rows to keep memory small.
+   - Averaging power is the multilooking step of SAR processing. GDAL's `average` resampling gives the same values to 1e-7 relative at 20 m and at 40 m, banded reading included (`docs/validation/reader-vs-gdal.txt`).
 4. **Other layers onto the grid.**
    - GSW, WorldCover and population use nearest neighbour; the DEM uses bilinear.
    - Grid pixel centres are transformed to each file's CRS with proj4 on a lattice every 16 pixels and interpolated in between.
@@ -46,7 +47,7 @@ Applied per pixel, in this order:
 | Class | Rule |
 |---|---|
 | 0 no data | VV before or after missing |
-| 4 permanent water | GSW occurrence ≥ 80% |
+| 4 permanent water | GSW occurrence ≥ 80% (values above 100, i.e. no data, are ignored) |
 | 5 excluded: slope | slope > 5° |
 | 2 flood, high confidence | VV after < T **and** VV after − VV before ≤ −3 dB **and** VH after − VH before ≤ −3 dB |
 | 3 flood, medium confidence | as above, but the VH condition fails or VH is missing |
@@ -54,26 +55,28 @@ Applied per pixel, in this order:
 | 1 dry | everything else |
 
 **Threshold T:**
-- The default is −18 dB on VV.
+- The default is −18 dB on VV gamma0. It is a fixed, adjustable default, the threshold used in the author's Lower Niger–Benue flood study. Section 9 shows how much the result depends on it.
 - With the automatic option, T is the Otsu (1979) threshold of VV after (0.1 dB bins, −30 to 0 dB). It is computed over pixels that are neither permanent water nor steep.
-- The Otsu value is used only if both conditions hold:
-  - it lies within −24 to −14 dB;
-  - the between-class variance is at least half the total variance, which indicates a clearly bimodal histogram.
+- The Otsu value is used only if all three hold:
+  1. **Two peaks.** The histogram is smoothed with a 1 dB moving average. The lowest bin between the highest bin below T and the highest bin above T must be at most half the lower of those two peaks (the "valley ratio"). Otsu's between-class variance ratio is not used as the test, because a single normal peak already scores about 0.64 on it (unit test `otsu: one normal peak`).
+  2. **Enough water.** The smaller class holds at least 2% of the pixels.
+  3. **Plausible range.** T lies between −24 and −14 dB.
 
-  Otherwise the default is used and the reason is reported.
+  Otherwise the default is used and the reasons are reported.
 - Where the maximum of the between-class variance is a plateau, T is its middle.
 - The user can change T, the change limit, the slope limit and the permanence limit after a run. Changing them reclassifies the stored arrays without reading the data again (`pipeline.reclassify`).
 
 **Why change detection:**
 - Calm water is a specular reflector and looks dark. So do smooth dry surfaces: sand, tarmac, some bare or burnt ground.
 - Requiring a drop of at least 3 dB since before removes surfaces that were already dark. These are reported separately as "water before".
-- This follows common Sentinel-1 practice: a post-event water threshold combined with a change test against a reference image. The VH test raises confidence, because cross-polarised backscatter over open water is very low and drops strongly when land floods.
+- The rule combines a post-event water threshold with a change test against a reference image of the same geometry. The VH test raises confidence, because cross-polarised backscatter over open water is very low and drops strongly when land floods.
 
 ## 5. Exposure (`engine.summarise`)
 
-- **Areas:** pixel count × resolution², in km². The pixels are exact squares in the UTM projection. The UTM scale error is under 0.1% within the zone.
+- **Areas:** ground areas. Each UTM pixel's map area (resolution²) is divided by k², where k is the UTM point scale factor at the column's easting, k = 0.9996 · (1 + (E − 500,000)² / (2R²)) (`engine.utmScale`). Without the correction the error would reach about 0.2% at the edge of the zone. GeoJSON and GeoTIFF outputs are in map units, so their areas in UTM are map areas.
 - **Modelled residents:**
-  - Each grid pixel takes the GHS-POP count of the 30″ cell containing its centre, divided by that cell's area. The cell area is computed on a sphere of radius 6,371.0088 km at the latitude of the pixel row band (`engine.cellAreaKm2`).
+  - Each grid pixel takes the GHS-POP count of the 30″ cell containing its centre, divided by that cell's area. The cell area uses the exact formula for an ellipsoidal quadrangle on WGS 84, at the latitude of the pixel's row band of 32 rows (`engine.cellAreaKm2`).
+  - Check: the modelled residents in the Lokoja box (554,219) match the GHS-POP cells over the same box, with edge cells weighted by the fraction inside (553,933), to 0.05% (`docs/validation/population-conservation.txt`).
   - This density is multiplied by the pixel area and summed over flood pixels.
   - This spreads each cell's population evenly within the cell. It estimates residents of the flooded ground, not people affected.
 - **Land cover:** flood area by ESA WorldCover class.
@@ -100,7 +103,7 @@ Applied per pixel, in this order:
   - Shallow water with emerging vegetation.
 - **False water:** surfaces that became smooth, dry or burnt between the dates; wet snow, which is outside the method's intended use.
 - **Timing:** Sentinel-1 revisits every 12 days from December 2021, when Sentinel-1B failed, until Sentinel-1C entered service in 2025. A single after image can miss the peak.
-- **Threshold sensitivity:** the result depends on T. For the Lokoja example the flood area runs from 9.6 km² at −20 dB to 40.0 km² at −14 dB (table in section 9).
+- **Threshold sensitivity:** the result depends on T. For the Lokoja example the flood area runs from 9.6 km² at −20 dB to 39.9 km² at −14 dB (table in section 9).
 - **Population:** 1 km cells and modelled 2025 estimates, uniform within each cell.
 - **Areas are capped** at 3,600 km² to fit in browser memory.
 
@@ -108,7 +111,8 @@ Applied per pixel, in this order:
 
 1. **Unit tests** of every engine function, against values worked out by hand (`tests/engine_test.mjs`, `tests/trace_test.mjs`).
 2. **Reader against GDAL:** the same grid read by `io.readToGrid` (nearest, full resolution) and by rasterio `WarpedVRT` (`tests/geometry_check.*`).
-3. **Engine against an independent Python implementation** (rasterio, scipy) on the Lokoja case (`pipeline/reference.py`).
+3. **Engine against an independent Python implementation** (rasterio, scipy and pyproj; projection factors from `pyproj.Proj.get_factors`, cell areas from `pyproj.Geod`) on the Lokoja case (`pipeline/reference.py`).
+   - Population conservation against direct GHS-POP sums (`docs/validation/population-conservation.txt`).
 4. **Exports:**
    - GeoTIFF read by GDAL;
    - GeoJSON validity and area checked with shapely and pyproj against the class grid.
@@ -121,12 +125,14 @@ The analysis area is 6.70–6.85° E, 7.70–7.85° N. "Before" is 2 August 2022
 
 | After | T (dB) | Flood (km²) | FloodScope water confirmed by UNOSAT | UNOSAT water found by FloodScope |
 |---|---|---|---|---|
-| 13 Oct 2022 | −20 | 9.63 | 99.9% | 32.0% |
-| 13 Oct 2022 | −18 (default) | 22.42 | 99.9% | 50.2% |
-| 13 Oct 2022 | −16 | 32.54 | 99.8% | 59.9% |
-| 13 Oct 2022 | −15 | 36.33 | 99.8% | 63.4% |
-| 13 Oct 2022 | −14 | 39.97 | 99.7% | 66.6% |
-| 25 Oct 2022 | −18 | 5.76 | 99.9% | 35.8% |
+| 13 Oct 2022 | −20 | 9.62 | 99.9% | 32.0% |
+| 13 Oct 2022 | −18 (default) | 22.40 | 99.9% | 50.2% |
+| 13 Oct 2022 | −16 | 32.52 | 99.8% | 59.9% |
+| 13 Oct 2022 | −15 | 36.30 | 99.8% | 63.4% |
+| 13 Oct 2022 | −14 | 39.94 | 99.7% | 66.6% |
+| 25 Oct 2022 | −18 | 5.75 | 99.9% | 35.8% |
+
+The full table, including 25 October at every threshold, is in `docs/validation/sensitivity-unosat.csv`. Flood areas are ground areas. Agreement is computed on pixel counts.
 
 **Reading:**
 - Nearly all of the water FloodScope maps is also water in UNOSAT's product.
@@ -135,7 +141,7 @@ The analysis area is 6.70–6.85° E, 7.70–7.85° N. "Before" is 2 August 2022
   2. UNOSAT's 375 m pixels widen water edges.
   3. Flooded vegetation, which C-band radar does not see as dark.
   4. The conservative default threshold.
-- The default stays at −18 dB, a common value for VV water, rather than being tuned to this one comparison. The sensitivity is reported here and the threshold can be dragged in the interface.
+- The default stays at −18 dB rather than being tuned to this one comparison. The sensitivity is reported here and the threshold can be dragged in the interface.
 
 ## References
 

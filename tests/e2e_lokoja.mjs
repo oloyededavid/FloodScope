@@ -2,7 +2,7 @@ import { listAcquisitions, runAnalysis } from '../js/pipeline.js';
 import { writeFileSync } from 'node:fs';
 const ring = [[6.70, 7.70], [6.85, 7.70], [6.85, 7.85], [6.70, 7.85], [6.70, 7.70]];
 const bbox = [6.70, 7.70, 6.85, 7.85];
-const acq = await listAcquisitions(bbox, '2022-07-01', '2022-11-30');
+const { list: acq } = await listAcquisitions(bbox, '2022-07-01', '2022-11-30');
 console.log(acq.map(a => a.datetime.slice(0, 10) + ' ' + a.orbitState + ' ' + a.relativeOrbit).join('\n'));
 const pre = acq.find(a => a.datetime.startsWith('2022-08-02')), post = acq.find(a => a.datetime.startsWith('2022-10-13'));
 const r = await runAnalysis({ aoi: { type: 'Polygon', coordinates: [ring] }, pre, post, base: 'http://127.0.0.1:8765', onProgress: m => console.log('  ·', m) });

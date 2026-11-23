@@ -1,6 +1,6 @@
 # FloodScope
 
-Flood extent and exposure from Sentinel-1 radar, for any place on Earth since October 2014, computed in the browser.
+Flood extent and exposure from Sentinel-1 radar, for any place between 56° S and 78° N since October 2014, computed in the browser.
 
 **Live:** https://oloyededavid.github.io/FloodScope/ (after publication)
 
@@ -12,13 +12,13 @@ The analysis runs in a Web Worker in your browser:
 - **Server:** none.
 
 Example: the Niger–Benue confluence at Lokoja, Nigeria.
-- Inputs: 2 August → 13 October 2022, an analysed area of 274.6 km².
-- Results: 22.4 km² of new water, 19.4 km² of it high confidence, with about 4,970 modelled residents.
+- Inputs: 2 August → 13 October 2022, an analysed area of 274.5 km².
+- Results: 22.4 km² of new water, 19.4 km² of it high confidence, with about 4,990 modelled residents.
 
 ## How it decides
 
 A pixel is flood water if both hold:
-- VV backscatter after the event is below −18 dB (or an Otsu threshold, when the histogram supports one);
+- VV backscatter after the event is below −18 dB (or an Otsu threshold, when the histogram has two separate peaks);
 - the pixel darkened by at least 3 dB since before.
 
 Pixels are excluded as permanent water (JRC occurrence ≥ 80%) or as too steep (slope > 5°). Confidence is high when VH also darkened. The full rule, with its limits, is in [docs/methodology.md](docs/methodology.md).
@@ -26,8 +26,9 @@ Pixels are excluded as permanent water (JRC occurrence ≥ 80%) or as too steep 
 ## Checks
 
 - **Unit tests:** `npm test`.
-- **Reader against GDAL:** identical radar values.
-- **Engine against an independent Python implementation:** flood area 22.4184 vs 22.4164 km², IoU 0.9992.
+- **Reader against GDAL:** identical radar values, nearest neighbour and averaged.
+- **Engine against an independent Python implementation:** flood area 22.4034 vs 22.4012 km², IoU 0.9992.
+- **Population conservation:** within 0.05% of the GHS-POP cells over the box.
 - **Exports:**
   - the GeoTIFF is checked with GDAL;
   - the GeoJSON is checked for validity and exact area with shapely and pyproj.

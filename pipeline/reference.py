@@ -24,12 +24,14 @@ cat = pystac_client.Client.open("https://planetarycomputer.microsoft.com/api/sta
 aoi = box(W, S, E, N)
 
 def s1(day):
+    """All slices of that day's acquisition over the box (same platform and relative orbit)."""
     it = list(cat.search(collections=["sentinel-1-rtc"], bbox=[W, S, E, N], datetime=f"{day}T00:00:00Z/{day}T23:59:59Z").items())
     if not it: sys.exit(f"no Sentinel-1 RTC scene on {day}")
-    return it[0]
+    k = lambda i: (i.properties["platform"], i.properties["sat:relative_orbit"], i.properties["sat:orbit_state"])
+    return [i for i in it if k(i) == k(it[0])]
 
 pre, post = s1(pre_d), s1(post_d)
-epsg = post.properties.get("proj:epsg") or int(str(post.properties["proj:code"]).split(":")[1])
+epsg = post[0].properties.get("proj:epsg") or int(str(post[0].properties["proj:code"]).split(":")[1])
 to_utm = Transformer.from_crs(4326, epsg, always_xy=True).transform
 a_utm = shp_transform(to_utm, aoi)
 area_km2 = shp_transform(Transformer.from_crs(4326, 6933, always_xy=True).transform, aoi).area / 1e6  # EASE-Grid 2.0, equal area
@@ -60,7 +62,7 @@ def to_db_filtered(lin):
         m = np.where(ok & (n > 0), s / n, np.nan)
         return 10 * np.log10(m)
 
-db = {k: to_db_filtered(read(it.assets[pol].href, Resampling.average)) for k, it, pol in
+db = {k: to_db_filtered(mosaic(items, pol, Resampling.average)) for k, items, pol in
       [("preVV", pre, "vv"), ("postVV", post, "vv"), ("preVH", pre, "vh"), ("postVH", post, "vh")]}
 for k in db: db[k][~inside] = np.nan
 
@@ -84,8 +86,10 @@ for f in sorted(glob.glob("data/population/pop2025_*.tif")):
     a = read(f, Resampling.nearest); m = np.isnan(pop) & ~np.isnan(a); pop[m] = a[m]
 rows_y = y1 - (np.arange(h) + 0.5) * res
 lat = np.array(Transformer.from_crs(epsg, 4326, always_xy=True).transform(np.full(h, x0 + w * res / 2), rows_y)[1])
-R, d = 6371.0088, math.radians(30 / 3600)
-cell = R * R * d * (np.sin(np.radians(lat) + d / 2) - np.sin(np.radians(lat) - d / 2))
+# area of each 30" cell on the WGS 84 ellipsoid, computed independently with pyproj's geodesic polygon area
+from pyproj import Geod
+geod, d = Geod(ellps="WGS84"), 30 / 3600
+cell = np.array([abs(geod.polygon_area_perimeter([0, d, d, 0], [la - d / 2, la - d / 2, la + d / 2, la + d / 2])[0]) / 1e6 for la in lat])
 dens = pop / cell[:, None]; dens[~inside] = np.nan
 
 # classification (methodology section 4)
@@ -97,12 +101,17 @@ flood = cand & (db["postVV"] < P["threshold"]) & (db["postVV"] - db["preVV"] <= 
 high = flood & (db["postVH"] - db["preVH"] <= P["change"])
 before = cand & ~flood & (db["preVV"] < P["threshold"])
 cls = np.zeros((h, w), "uint8"); cls[valid] = 1; cls[high] = 2; cls[flood & ~high] = 3; cls[perm] = 4; cls[steep] = 5; cls[before] = 6
-km2 = res * res / 1e6
-pp = np.where(np.isnan(dens), 0, dens) * km2
+# ground area per pixel: UTM map area / k^2, with k from pyproj's projection factors at each column centre
+from pyproj import Proj
+cols_e = x0 + (np.arange(w) + 0.5) * res
+lon_c, lat_c = Transformer.from_crs(epsg, 4326, always_xy=True).transform(cols_e, np.full(w, y1 - h * res / 2))
+k = np.array(Proj(f"EPSG:{epsg}").get_factors(lon_c, lat_c).meridional_scale)
+A = np.broadcast_to((res * res / k ** 2 / 1e6)[None, :], (h, w))
+pp = np.where(np.isnan(dens), 0, dens) * A
 summary = {"grid": [w, h, res, epsg, x0, y1],
-           "areaKm2": {"valid": float(valid.sum() * km2), "flood": float(flood.sum() * km2), "floodHigh": float(high.sum() * km2),
-                       "permanent": float(perm.sum() * km2), "steep": float(steep.sum() * km2), "waterBefore": float(before.sum() * km2)},
-           "population": {"inFlood": float(pp[flood].sum()), "inValidArea": float(pp[valid].sum())},
-           "landcoverKm2": {str(int(k)): float((flood & (lc == k)).sum() * km2) for k in np.unique(lc[flood]) if k == k}}
+           "areaKm2": {"valid": float(A[valid].sum()), "flood": float(A[flood].sum()), "floodHigh": float(A[high].sum()),
+                       "permanent": float(A[perm].sum()), "steep": float(A[steep].sum()), "waterBefore": float(A[before].sum())},
+           "population": {"inFlood": float(pp[flood].sum()), "inValidArea": float(pp[valid].sum()), "inAoi": float(pp[inside].sum())},
+           "landcoverKm2": {str(int(v)): float(A[flood & (lc == v)].sum()) for v in np.unique(lc[flood]) if v == v}}
 json.dump({"summary": summary, "cls": cls.ravel().tolist()}, open(out, "w"))
 print(json.dumps(summary, indent=1))

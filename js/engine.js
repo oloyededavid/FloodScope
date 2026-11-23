@@ -48,9 +48,13 @@ export function toDb(a) {
 }
 
 // ---------------------------------------------------------------- threshold
-/** Otsu (1979) threshold of finite values within [lo, hi], 0.1 dB bins. Returns {t, bimodality, n}.
-    bimodality is the between-class variance divided by total variance (0..1); low values mean the histogram
-    has no clear water mode and the automatic threshold should not be trusted. */
+/** Otsu (1979) threshold of finite values within [lo, hi], 0.1 dB bins.
+    Returns {t, separation, valleyRatio, minorShare, n}:
+      separation  between-class variance / total variance (Otsu's criterion; high even for one normal peak, so not used alone)
+      valleyRatio after smoothing the histogram with a 1 dB moving average, the lowest count between the highest bin below t
+                  and the highest bin above t, divided by the lower of those two peaks. A single peak gives about 1; two
+                  separate peaks give a value well below 1. This is the test for two modes.
+      minorShare  share of values in the smaller class. */
 export function otsu(a, lo = -30, hi = 0, step = 0.1) {
   const nb = Math.round((hi - lo) / step), hist = new Float64Array(nb);
   let n = 0;
@@ -58,7 +62,7 @@ export function otsu(a, lo = -30, hi = 0, step = 0.1) {
     const v = a[i]; if (!(v === v) || v < lo || v >= hi) continue;
     hist[Math.min(nb - 1, Math.floor((v - lo) / step))]++; n++;
   }
-  if (n < 100) return { t: NaN, bimodality: 0, n };
+  if (n < 100) return { t: NaN, separation: 0, valleyRatio: 1, minorShare: 0, n };
   const c = i => lo + (i + 0.5) * step;
   let sumAll = 0, sq = 0;
   for (let i = 0; i < nb; i++) { sumAll += hist[i] * c(i); sq += hist[i] * c(i) * c(i); }
@@ -77,7 +81,16 @@ export function otsu(a, lo = -30, hi = 0, step = 0.1) {
   }
   let first = -1, last = -1;
   for (let i = 0; i < nb; i++) if (bv[i] >= best * (1 - 1e-9)) { if (first < 0) first = i; last = i; }
-  return { t: lo + ((first + last) / 2 + 1) * step, bimodality: varT > 0 ? best / varT : 0, n };
+  const t = lo + ((first + last) / 2 + 1) * step, ti = Math.round((t - lo) / step);
+  const half = Math.round(0.5 / step), sm = new Float64Array(nb);
+  for (let i = 0; i < nb; i++) { let s2 = 0, m2 = 0; for (let j = i - half; j <= i + half; j++) if (j >= 0 && j < nb) { s2 += hist[j]; m2++; } sm[i] = s2 / m2; }
+  let pl = 0, il = 0, pr = 0, ir = nb - 1;
+  for (let i = 0; i < ti; i++) if (sm[i] > pl) { pl = sm[i]; il = i; }
+  for (let i = ti; i < nb; i++) if (sm[i] > pr) { pr = sm[i]; ir = i; }
+  let valley = Infinity; for (let i = il; i <= ir; i++) if (sm[i] < valley) valley = sm[i];
+  let below = 0; for (let i = 0; i < ti; i++) below += hist[i];
+  return { t, separation: varT > 0 ? best / varT : 0, valleyRatio: Math.min(pl, pr) > 0 ? valley / Math.min(pl, pr) : 1,
+           minorShare: Math.min(below, n - below) / n, n };
 }
 
 // ---------------------------------------------------------------- terrain
@@ -126,38 +139,47 @@ export function classify({ preVV, postVV, preVH, postVH, occurrence, slope }, n,
 }
 
 // ---------------------------------------------------------------- exposure
-/** Area of one GHS-POP 30 arc-second cell at latitude lat (km^2), on a sphere of radius 6371.0088 km (mean Earth radius). */
+/** Area of one GHS-POP 30 arc-second cell centred at latitude lat (km^2) on the WGS 84 ellipsoid (exact formula for an
+    ellipsoidal quadrangle: A = b^2 * dLon / 2 * [q(phi2) - q(phi1)], with q the authalic function). */
 export function cellAreaKm2(lat, arcsec = 30) {
-  const R = 6371.0088, d = arcsec / 3600 * Math.PI / 180, phi = lat * Math.PI / 180;
-  return R * R * d * (Math.sin(phi + d / 2) - Math.sin(phi - d / 2));
+  const a = 6378.137, f = 1 / 298.257223563, e2 = f * (2 - f), e = Math.sqrt(e2), b2 = a * a * (1 - e2);
+  const d = arcsec / 3600 * Math.PI / 180, phi = lat * Math.PI / 180;
+  const q = p => { const s = Math.sin(p); return s / (1 - e2 * s * s) + Math.log((1 + e * s) / (1 - e * s)) / (2 * e); };
+  return b2 * d / 2 * (q(phi + d / 2) - q(phi - d / 2));
 }
+
+/** UTM point scale factor at easting E (m), to first order: k = 0.9996 * (1 + (E - 500000)^2 / (2 R^2)), R = 6371 km.
+    A UTM square of map area A covers A / k^2 on the ground. */
+export function utmScale(easting) { const d = easting - 500000; return 0.9996 * (1 + d * d / (2 * 6371000 * 6371000)); }
 
 /** Summaries over the classified grid.
     pixelAreaM2: area of one grid pixel (m^2). popDensity: persons per km^2 per grid pixel (Float32Array, NaN = no data).
     landcover: ESA WorldCover class per pixel (Uint8Array) or null. zones: Int32Array of zone index per pixel (-1 = none) or null. */
-export function summarise(cls, { pixelAreaM2, popDensity, landcover, zones, nZones }) {
-  const n = cls.length, km2 = pixelAreaM2 / 1e6;
-  const count = new Float64Array(7);
-  let popFlood = 0, popHigh = 0, popAll = 0, popMissing = 0;
+export function summarise(cls, { pixelAreaM2, colAreaKm2 = null, width = 0, popDensity, landcover, zones, nZones, inAoi = null }) {
+  // ground area of each pixel: per column when a UTM scale correction is given, otherwise the map area
+  const n = cls.length, km2 = pixelAreaM2 / 1e6, A = colAreaKm2 ? (i => colAreaKm2[i % width]) : (() => km2);
+  const area = new Float64Array(7);
+  let popFlood = 0, popHigh = 0, popAll = 0, popAoi = 0, popMissing = 0, nValid = 0;
   const lc = new Map(), zf = nZones ? new Float64Array(nZones) : null, zp = nZones ? new Float64Array(nZones) : null;
   for (let i = 0; i < n; i++) {
-    const c = cls[i]; count[c]++;
-    const d = popDensity ? popDensity[i] : NaN, pp = d === d ? d * km2 : 0;
-    if (c !== CLS.NODATA) { if (d === d) popAll += pp; else popMissing++; }
+    const c = cls[i], a = A(i); area[c] += a;
+    const d = popDensity ? popDensity[i] : NaN, pp = d === d ? d * a : 0;
+    if (!inAoi || inAoi[i] >= 0) popAoi += pp;
+    if (c !== CLS.NODATA) { nValid++; if (d === d) popAll += pp; else popMissing++; }
     const flood = c === CLS.FLOOD_HIGH || c === CLS.FLOOD_MEDIUM;
     if (!flood) continue;
     popFlood += pp; if (c === CLS.FLOOD_HIGH) popHigh += pp;
-    if (landcover) { const k = landcover[i]; lc.set(k, (lc.get(k) || 0) + 1); }
-    if (zf) { const z = zones[i]; if (z >= 0) { zf[z]++; zp[z] += pp; } }
+    if (landcover) { const k = landcover[i]; lc.set(k, (lc.get(k) || 0) + a); }
+    if (zf) { const z = zones[i]; if (z >= 0) { zf[z] += a; zp[z] += pp; } }
   }
-  const valid = n - count[CLS.NODATA];
+  const valid = area[1] + area[2] + area[3] + area[4] + area[5] + area[6];
   return {
-    pixels: n, validPixels: valid,
-    areaKm2: { valid: valid * km2, flood: (count[2] + count[3]) * km2, floodHigh: count[2] * km2, floodMedium: count[3] * km2,
-               permanent: count[4] * km2, steep: count[5] * km2, waterBefore: count[6] * km2, dry: count[1] * km2 },
-    population: { inFlood: popFlood, inFloodHigh: popHigh, inValidArea: popAll, pixelsWithoutPopulation: popMissing },
-    landcoverKm2: Object.fromEntries([...lc.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, v * km2])),
-    zones: zf ? Array.from(zf, (v, z) => ({ zone: z, floodKm2: v * km2, population: zp[z] })) : null,
+    pixels: n, validPixels: nValid,
+    areaKm2: { valid, flood: area[2] + area[3], floodHigh: area[2], floodMedium: area[3],
+               permanent: area[4], steep: area[5], waterBefore: area[6], dry: area[1] },
+    population: { inFlood: popFlood, inFloodHigh: popHigh, inValidArea: popAll, inAoi: popAoi, pixelsWithoutPopulation: popMissing },
+    landcoverKm2: Object.fromEntries([...lc.entries()].sort((a, b) => b[1] - a[1])),
+    zones: zf ? Array.from(zf, (v, z) => ({ zone: z, floodKm2: v, population: zp[z] })) : null,
   };
 }
 

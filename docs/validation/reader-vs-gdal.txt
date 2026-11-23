@@ -1,6 +1,9 @@
-# Reader against GDAL: nearest neighbour, full resolution, 400 x 300 grid of 20 m in EPSG:32632 at origin (246280, 868420) (2026-11-23)
-S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc valid js 120000 gdal 120000 identical values 1.0
-S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_rtc valid js 120000 gdal 120000 identical values 1.0
-Copernicus_DSM_COG_10_N07_00_E006_00_DEM valid js 120000 gdal 120000 identical values 0.9957083333333333
-0E_10Nv1_3_2020 valid js 120000 gdal 120000 identical values 0.9992166666666666
-ESA_WorldCover_10m_2021_v200_N06E006 valid js 120000 gdal 120000 identical values 0.9993416666666667
+# Reader against GDAL on the same grids, EPSG:32632 (2026-11-23). nearest: full resolution; average: mean of the 10 m pixels in each grid pixel (rasterio WarpedVRT Resampling.average). The 1200 x 600 run at 40 m uses the banded reading path.
+S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc nearest 20 m valid js 120000 gdal 120000 identical values 1.0 max relative difference 0.0 median 0.0
+S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_rtc nearest 20 m valid js 120000 gdal 120000 identical values 1.0 max relative difference 0.0 median 0.0
+Copernicus_DSM_COG_10_N07_00_E006_00_DEM nearest 20 m valid js 120000 gdal 120000 identical values 0.99571 max relative difference 0.11974314600229263 median 0.0
+0E_10Nv1_3_2020 nearest 20 m valid js 120000 gdal 120000 identical values 0.99922 max relative difference 18000000319488.0 median 0.0
+ESA_WorldCover_10m_2021_v200_N06E006 nearest 20 m valid js 120000 gdal 120000 identical values 0.99934 max relative difference 4.0 median 0.0
+S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc average 20 m valid js 120000 gdal 120000 identical values 0.99987 max relative difference 6.7275372828135e-08 median 0.0
+S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc average 40 m valid js 30000 gdal 30000 identical values 0.99417 max relative difference 1.1815818368177133e-07 median 0.0
+S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc average 40 m valid js 720000 gdal 720000 identical values 0.99381 max relative difference 1.1908488772860437e-07 median 0.0

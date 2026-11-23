@@ -58,7 +58,8 @@ async function setAoi(b, label) {
   map.getSource('aoi').setData({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [S.aoi.ring] } });
   const ok = a <= LIMIT_KM2 && a >= 0.5;
   $('aoi-info').innerHTML = `${label ? `<strong>${esc(label)}</strong> · ` : ''}${fmt(a, 0)} km² ${ok ? '' : `<span style="color:#a1271b">— ${a > LIMIT_KM2 ? 'larger than the 3,600 km² limit; draw a smaller area' : 'too small'}</span>`}`;
-  S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun();
+  searchSeq++; S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun();
+  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', ' <span style="color:#a1271b">— outside 56° S to 78° N, where the permanent-water layer exists</span>');
   return ok;
 }
 
@@ -114,14 +115,18 @@ $('search').addEventListener('submit', async ev => {
 
 // ---------------------------------------------------------------- acquisitions
 $('list').addEventListener('click', listImages);
+let searchSeq = 0;
 async function listImages() {
   if (!S.aoi) { $('pick-info').textContent = 'Choose an area first.'; return; }
+  const mine = ++searchSeq, aoiAtStart = S.aoi;
   const d0 = $('d0').value, d1 = $('d1').value;
   if (!d0 || !d1 || d0 > d1) { $('pick-info').textContent = 'The start date must be before the end date.'; return; }
   $('timeline').innerHTML = '<p class="small">Searching the Sentinel-1 archive…</p>';
   try {
-    const { list } = await ask('acquisitions', { bbox: S.aoi.bbox, start: `${d0}T00:00:00Z`, end: `${d1}T23:59:59Z` });
+    const { list, truncated } = await ask('acquisitions', { bbox: S.aoi.bbox, start: `${d0}T00:00:00Z`, end: `${d1}T23:59:59Z` });
+    if (mine !== searchSeq || S.aoi !== aoiAtStart) return;   // the area or the dates changed while searching
     S.acq = list; S.pre = S.post = null; renderTimeline(); updateRun();
+    if (truncated) $('pick-info').insertAdjacentHTML('afterbegin', '<span style="color:#a1271b">Only the first 400 scenes are listed; shorten the date range to see later ones.</span> ');
   } catch (e) { $('timeline').innerHTML = `<p class="small" style="color:#a1271b">Could not search the archive: ${esc(e.message)}</p>`; }
 }
 const trackKey = a => `${a.orbitState} · relative orbit ${a.relativeOrbit}`;
@@ -154,10 +159,11 @@ function pick(a) {
   else if (trackKey(a) === trackKey(S.pre) && a.datetime > S.pre.datetime) S.post = a;
   renderTimeline(); updateRun();
 }
-function updateRun() { $('run').disabled = !(S.aoi && S.pre && S.post && S.aoi.area <= LIMIT_KM2); }
+function updateRun() { $('run').disabled = running || !(S.aoi && S.pre && S.post && S.aoi.area <= LIMIT_KM2 && S.aoi.bbox[1] >= -56 && S.aoi.bbox[3] <= 78); }
 
 // ---------------------------------------------------------------- settings
-const P = () => ({ autoThreshold: $('p-auto').checked, thresholdVV: +$('p-thr').value, changeDb: +$('p-chg').value, slopeMax: +$('p-slp').value, permanentOccurrence: +$('p-occ').value });
+// with the automatic threshold on, the fallback is always the documented default (-18 dB), never a value left on the slider
+const P = () => ({ autoThreshold: $('p-auto').checked, thresholdVV: $('p-auto').checked ? -18 : +$('p-thr').value, changeDb: +$('p-chg').value, slopeMax: +$('p-slp').value, permanentOccurrence: +$('p-occ').value });
 const outs = { 'p-thr': ['o-thr', v => `${fmt(v)} dB`], 'p-chg': ['o-chg', v => `${fmt(v)} dB`], 'p-slp': ['o-slp', v => `${v}°`], 'p-occ': ['o-occ', v => `${v}%`] };
 for (const [id, [o, f]] of Object.entries(outs)) $(id).addEventListener('input', () => {
   $(o).textContent = f(+$(id).value).replace('-', '−');
@@ -168,27 +174,32 @@ for (const [id, [o, f]] of Object.entries(outs)) $(id).addEventListener('input',
 const log = $('log');
 function logLine(msg, cls = '') { log.querySelectorAll('li.now').forEach(li => li.classList.remove('now')); const li = document.createElement('li'); li.textContent = msg; if (cls) li.className = cls; log.append(li); li.scrollIntoView({ block: 'nearest' }); }
 $('run').addEventListener('click', runNow);
+let running = false;
 async function runNow() {
-  if (!S.aoi || !S.pre || !S.post) return;
-  $('run').disabled = true; log.innerHTML = '';
+  if (running || !S.aoi || !S.pre || !S.post) return;
+  running = true; clearTimeout(rcTimer);
+  $('run').disabled = true; $('demo').disabled = true; log.innerHTML = '';
+  S.result = null; $('results').hidden = true; $('inspect').hidden = true;
   logLine('Starting', 'now');
   let zones = null;
   if ($('p-zones').checked) zones = await loadZones(S.aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
   try {
-    const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [S.aoi.ring] }, pre: S.pre, post: S.post, params: P(), base: BASE, zones } },
+    const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [S.aoi.ring] }, pre: S.pre, post: S.post, params: P(), base: BASE, zones, label: S.aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
     log.querySelectorAll('li.now').forEach(li => li.classList.remove('now'));
     S.result = r; S.zonesSource = zones ? zones.source : null;
     $('p-thr').value = r.threshold.value; $('o-thr').textContent = `${fmt(r.threshold.value)} dB`.replace('-', '−');
     await drawResult(r, true);
   } catch (e) { logLine(e.message, 'err'); }
-  finally { updateRun(); }
+  finally { running = false; $('demo').disabled = false; updateRun(); }
 }
 
 let rcTimer = null;
 function scheduleReclassify(extra) {
   clearTimeout(rcTimer);
+  if (running) return;
   rcTimer = setTimeout(async () => {
+    if (running || !S.result) return;
     const p = P(), params = { changeDb: p.changeDb, slopeMax: p.slopeMax, permanentOccurrence: p.permanentOccurrence, ...extra };
     try { const r = await ask('reclassify', { params }); S.result = r; await drawResult(r, false); } catch (e) { logLine(e.message, 'err'); }
   }, 60);
@@ -316,8 +327,8 @@ function renderFigures(r) {
   const share = a.valid ? a.flood / a.valid * 100 : 0;
   $('figures').innerHTML = [
     [fmt(a.flood, a.flood < 10 ? 2 : 1), 'km² of new water', `${fmt(share)}% of the ${fmt(a.valid, 0)} km² analysed`],
-    [fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), 'km² high confidence', `VV and VH both darkened; ${fmt(a.floodMedium, 2)} km² medium`],
-    [fmtInt(s.population.inFlood), 'modelled residents in it', `GHS-POP 2025, ${fmtInt(s.population.inFloodHigh)} in high-confidence water`],
+    [fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), 'km² high confidence', m.post.polarisations === 'VV, VH' ? `VV and VH both darkened; ${fmt(a.floodMedium, 2)} km² medium (VV only)` : 'no VH in these images, so all flood is medium confidence'],
+    [fmtInt(s.population.inFlood), 'modelled residents in it', `GHS-POP 2025, ${fmtInt(s.population.inFloodHigh)} in high-confidence water${s.population.pixelsWithoutPopulation ? `; ${fmtInt(s.population.pixelsWithoutPopulation)} pixels had no population data` : ''}`],
     [fmt(a.permanent, 1), 'km² permanent water', `excluded; ${fmt(a.waterBefore, 1)} km² was already water-like before`],
   ].map(([v, u, d]) => `<div class="fig"><span class="v">${v}</span><span class="u">${u}</span><p class="d">${d}</p></div>`).join('');
 }
@@ -400,7 +411,7 @@ async function printReport() {
   const r = S.result, s = r.summary, a = s.areaKm2, m = r.meta, img = URL.createObjectURL(await mapPng());
   const lc = Object.entries(s.landcoverKm2).map(([k, v]) => `<tr><td>${esc(WORLDCOVER[k] || k)}</td><td>${fmt(v, 2)} km²</td></tr>`).join('');
   const zn = (s.zones || []).slice(0, 30).map(z => `<tr><td>${esc(z.name)}</td><td>${fmt(z.floodKm2, 2)} km²</td><td>${fmtInt(z.population)}</td></tr>`).join('');
-  $('report').innerHTML = `<h1>FloodScope report</h1><p>${esc(S.aoi.label || 'Area')} · ${fmt(m.aoiAreaKm2, 0)} km² · generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC</p>
+  $('report').innerHTML = `<h1>FloodScope report</h1><p>${esc(m.label || 'Area')} · ${fmt(m.aoiAreaKm2, 0)} km² · generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC</p>
     <img src="${img}" alt="Map of the flood extent">
     <h2>Result</h2><table>
     <tr><td>New water (flood)</td><td>${fmt(a.flood, 2)} km² (${fmt(a.floodHigh, 2)} high, ${fmt(a.floodMedium, 2)} medium confidence)</td></tr>
@@ -411,9 +422,9 @@ async function printReport() {
     <h2>Flooded land cover</h2><table>${lc || '<tr><td>none</td></tr>'}</table>
     ${zn ? `<h2>By administrative area</h2><table><tr><th>Area</th><th>Flooded</th><th>Modelled residents</th></tr>${zn}</table>` : ''}
     <h2>Processing</h2><table>
-    <tr><td>Before</td><td>${esc(m.pre.id)}</td></tr><tr><td>After</td><td>${esc(m.post.id)}</td></tr>
+    <tr><td>Before</td><td>${esc((m.pre.slices || [m.pre.id]).join(', '))}</td></tr><tr><td>After</td><td>${esc((m.post.slices || [m.post.id]).join(', '))}</td></tr>
     <tr><td>Grid</td><td>${m.resolutionM} m, ${esc(m.crs)}</td></tr>
-    <tr><td>Rule</td><td>VV after &lt; ${fmt(r.params.threshold)} dB (${esc(r.threshold.source)}) and VV change ≤ ${fmt(r.params.changeDb)} dB; slope ≤ ${r.params.slopeMax}°; permanent water at ≥ ${r.params.permanentOccurrence}% occurrence excluded; 3 × 3 speckle mean</td></tr>
+    <tr><td>Rule</td><td>VV after &lt; ${fmt(r.params.threshold)} dB (${esc(r.threshold.source)}) and VV change ≤ ${fmt(r.params.changeDb)} dB; slope ≤ ${r.params.slopeMax}°; permanent water at ≥ ${r.params.permanentOccurrence}% occurrence excluded; ${r.params.speckleWindow} × ${r.params.speckleWindow} speckle mean</td></tr>
     <tr><td>Software</td><td>FloodScope ${esc(m.version)}, run ${esc(m.runAt)}</td></tr></table>
     <p class="src">${Object.values(m.sources).filter(Boolean).map(esc).join(' · ')}</p>
     <p class="src">Limits: radar misses water under canopy and between buildings, and smooth dry surfaces can look like water. No ground truth was used.</p>`;

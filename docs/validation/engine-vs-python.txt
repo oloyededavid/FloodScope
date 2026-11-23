@@ -1,12 +1,14 @@
 # Browser engine (js/, run in Node) against pipeline/reference.py, Lokoja 2022-08-02 -> 2022-10-13, 6.70-6.85 E, 7.70-7.85 N (2026-11-23)
+# Ground areas (UTM area / k^2 per column; reference uses pyproj projection factors), population cells on the WGS 84 ellipsoid (reference uses pyproj Geod)
 grid js [833, 835, 20, 32632, 246280, 868420] grid py [833, 835, 20.0, 32632, 246280.0, 868420.0]
 pixel-level class agreement 0.9985 | flood IoU 0.99916
-area valid        js  274.6492  py  274.6492  km2
-area flood        js   22.4184  py   22.4164  km2
-area floodHigh    js   19.3656  py   19.3640  km2
-area permanent    js   20.8912  py   20.8944  km2
-area steep        js   54.4372  py   54.4532  km2
-area waterBefore  js   13.3228  py   13.3208  km2
-population in flood  js 4969.5  py 4960.4
-population in area   js 552285.7  py 552260.9
+area valid        js  274.4616  py  274.4595  km2
+area flood        js   22.4034  py   22.4012  km2
+area floodHigh    js   19.3527  py   19.3509  km2
+area permanent    js   20.8767  py   20.8797  km2
+area steep        js   54.3972  py   54.4128  km2
+area waterBefore  js   13.3140  py   13.3119  km2
+population inFlood      js 4987.1  py 4977.9
+population inValidArea  js 554219.3  py 554190.0
+population inAoi        js 554219.3  py 554190.0
 largest disagreements (js class, py class): count [((1, 5), 468), ((5, 1), 426), ((6, 4), 45), ((4, 6), 41), ((5, 2), 12)]

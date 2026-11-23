@@ -1,11 +1,13 @@
-# node tests/engine_test.mjs && node tests/trace_test.mjs (2026-11-23)
+# npm test (2026-11-23)
 PASS  focalMean centre  5
 PASS  focalMean corner  3
 PASS  focalMean skips NaN  5.375
 PASS  focalMean keeps NaN pixel NaN
 PASS  toDb values
 PASS  otsu threshold in the middle of the gap  t=-14.55
-PASS  otsu bimodality high  0.998
+PASS  otsu: two peaks give a deep valley  0.000
+PASS  otsu: one normal peak has a high separation ratio  0.641
+PASS  otsu: one normal peak fails the valley test  1.000
 PASS  otsu too few pixels
 PASS  slope 45 deg  45
 PASS  slope flat
@@ -21,8 +23,10 @@ PASS  summary population  0.6000000000000001
 PASS  summary land cover
 PASS  summary zones
 PASS  summary missing population counted
-PASS  cell area at equator  0.8586
-PASS  cell area shrinks with latitude
+PASS  summary uses per-column ground areas
+PASS  cell area at equator (ellipsoid)  0.85480
+PASS  cell area at 60 N (ellipsoid)  0.431723 vs 0.431723
+PASS  UTM scale factor
 PASS  grid snapped
 PASS  utm zone Lokoja
 PASS  utm zone south

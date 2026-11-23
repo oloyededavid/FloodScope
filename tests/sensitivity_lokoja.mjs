@@ -4,7 +4,7 @@ import { classGeoTiff } from '../js/exports.js';
 import { writeFileSync } from 'node:fs';
 const D = process.argv[2];
 const ring = [[6.70, 7.70], [6.85, 7.70], [6.85, 7.85], [6.70, 7.85], [6.70, 7.70]];
-const acq = await listAcquisitions([6.70, 7.70, 6.85, 7.85], '2022-07-01', '2022-11-30');
+const { list: acq } = await listAcquisitions([6.70, 7.70, 6.85, 7.85], '2022-07-01', '2022-11-30');
 const pre = acq.find(a => a.datetime.startsWith('2022-08-02'));
 for (const day of ['2022-10-13', '2022-10-25']) {
   const post = acq.find(a => a.datetime.startsWith(day));

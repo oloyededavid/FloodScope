@@ -48,9 +48,9 @@ export async function signedHref(href, collection, signal) {
 // ---------------------------------------------------------------- COG reading
 const tiffCache = new Map();
 async function openTiff(url) {
-  const key = url.split('?')[0];
-  let p = tiffCache.get(key);
-  if (!p) { p = fromUrl(url, { allowFullFile: false, cacheSize: 200 }); tiffCache.set(key, p); }
+  // keyed by the full URL: a new read token gives a new key, so an expired token is never reused
+  let p = tiffCache.get(url);
+  if (!p) { p = fromUrl(url, { allowFullFile: false, cacheSize: 200 }); tiffCache.set(url, p); if (tiffCache.size > 60) tiffCache.delete(tiffCache.keys().next().value); }
   return p;
 }
 export function clearCache() { tiffCache.clear(); }
@@ -66,8 +66,20 @@ function imageEpsg(img) {
     grid: from engine.makeGrid (projected CRS, metres). method: 'nearest' | 'bilinear' | 'average' (mean of source pixels inside each grid pixel; used for radar power).
     Returns Float32Array (grid.n), NaN outside the file or at no-data. Coordinates of grid pixel centres are transformed
     to the file's CRS on a lattice every `step` pixels and interpolated in between (error well under one source pixel). */
-export async function readToGrid(url, grid, { method = 'nearest', band = 0, into = null, step = 16, signal, fullRes = false } = {}) {
+export async function readToGrid(url, grid, { method = 'nearest', band = 0, into = null, step = 16, signal, fullRes = false, bandRows = 0 } = {}) {
   const out = into || new Float32Array(grid.n).fill(NaN);
+  // 'average' reads the native resolution; large grids are processed in bands of rows to keep memory small
+  if (method === 'average' && !bandRows) {
+    const rows = Math.max(16, Math.floor(4e6 / Math.max(1, grid.w * (grid.res / 10) ** 2)));
+    if (rows < grid.h) {
+      for (let r0 = 0; r0 < grid.h; r0 += rows) {
+        const h = Math.min(rows, grid.h - r0), sub = { ...grid, y1: grid.y1 - r0 * grid.res, h, n: grid.w * h };
+        const part = await readToGrid(url, sub, { method, band, step, signal, bandRows: h });
+        out.set(part, r0 * grid.w);
+      }
+      return out;
+    }
+  }
   const tiff = await openTiff(url);
   const img0 = await tiff.getImage(0);
   const srcCrs = defineEpsg(imageEpsg(img0)), gridCrs = defineEpsg(grid.crs);
@@ -101,7 +113,8 @@ export async function readToGrid(url, grid, { method = 'nearest', band = 0, into
   for (let k = 1; k < nImg; k++) {
     const im = await tiff.getImage(k), s = W0 / im.getWidth();
     // 'average' keeps at least 2 x 2 source pixels per grid pixel so the mean is computed here, not inherited from an overview
-    const limit = method === 'average' ? gridResInSrc / 2 : gridResInSrc;
+    // 'average' always uses the full-resolution image: provider overviews use their own (unstated) resampling
+    const limit = method === 'average' ? Math.abs(rx0) * 0.999 : gridResInSrc;
     if (!fullRes && Math.abs(rx0) * s <= limit * 1.0001) { level = k; scale = s; }
   }
   const img = level ? await tiff.getImage(level) : img0;

@@ -29,7 +29,7 @@
 <section class="intro wrap">
   <p class="meta">Flood extent and exposure explorer</p>
   <h1>Where did the water go, and who lived there?</h1>
-  <p class="lead">FloodScope compares two Sentinel-1 radar images of the same place, one before and one after a flood, and maps the ground that turned to open water. It then counts the modelled population and the land cover inside that water. Radar sees through cloud, so it works in the rain that causes floods. Everything is computed in your browser from open data, anywhere on Earth since October 2014.</p>
+  <p class="lead">FloodScope compares two Sentinel-1 radar images of the same place, one before and one after a flood, and maps the ground that turned to open water. It then counts the modelled population and the land cover inside that water. Radar sees through cloud, so it works in the rain that causes floods. Everything is computed in your browser from open data, for any place between 56° S and 78° N since October 2014.</p>
   <div class="intro-actions">
     <button class="btn primary" id="demo">Run the Lokoja example (October 2022)</button>
     <a class="link" href="#method">How it decides what is flood water <span class="arrow" aria-hidden="true">↗</span></a>
@@ -133,11 +133,11 @@
       <h3>2 · Speckle</h3>
       <p>A 3 × 3 focal mean of linear backscatter (a 60 m window at 20 m), converted to decibels afterwards.</p>
       <h3>3 · Water and change</h3>
-      <p>A pixel is flood water if, after the event, its VV backscatter is below the water threshold <em>and</em> it darkened by at least 3 dB since before. Calm water reflects radar away from the sensor, so it is dark. The threshold is −18 dB, or the Otsu split of the after-image histogram when that split is between −24 and −14 dB and the histogram is clearly two-peaked (between-class variance at least half the total).</p>
+      <p>A pixel is flood water if, after the event, its VV backscatter (gamma0) is below the water threshold <em>and</em> it darkened by at least 3 dB since before. Calm water reflects radar away from the sensor, so it is dark. The default threshold is −18 dB. With the automatic option, the Otsu split of the after-image histogram is used instead when the histogram has two separate peaks (the valley between them is at most half the lower peak), the smaller class holds at least 2% of pixels, and the split lies between −24 and −14 dB. The threshold matters: the Lokoja example finds 9.6 km² at −20 dB and 40.0 km² at −14 dB, so drag it and see.</p>
     </div>
     <div>
       <h3>4 · What is excluded</h3>
-      <p>Permanent water: pixels that were water in at least 80% of observations in the JRC Global Surface Water record (1984–2020). Slopes above 5°, computed from Copernicus DEM GLO-30, where radar shadow mimics water. Pixels dark both before and after are reported as “water before”, not as flood.</p>
+      <p>Permanent water: pixels that were water in at least 80% of observations in the JRC Global Surface Water record (1984–2020). Slopes above 5°, computed from Copernicus DEM GLO-30, where radar shadow mimics water. Pixels that were already below the threshold before the event and did not darken further are reported as “water before”, not as flood.</p>
       <h3>5 · Confidence</h3>
       <p>High where VH also darkened by at least the same amount, medium where only VV did.</p>
       <h3>6 · Exposure</h3>
@@ -172,7 +172,8 @@
     <li>Sentinel-1 revisits every 6 or 12 days (12 days from December 2021, when Sentinel-1B failed, until Sentinel-1C joined in 2025), so the after image may miss the peak.</li>
     <li>There is no ground truth here. For the Lokoja example the result is compared with an independent satellite product (UNOSAT); agreement is not accuracy.</li>
     <li>Population is spread evenly within 1 km cells, so exposure in a cell that is partly flooded is approximate.</li>
-    <li>Areas are capped at 3,600 km² so the analysis fits in browser memory.</li>
+    <li>Areas are capped at 3,600 km² so the analysis fits in browser memory, and limited to 56° S – 78° N, the coverage of the permanent-water layer.</li>
+    <li>Areas are ground areas: each UTM pixel is corrected for the projection's scale factor at its easting (up to about 0.2% at the zone edge).</li>
   </ul>
 </section>
 </main>

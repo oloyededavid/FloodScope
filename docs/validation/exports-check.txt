@@ -1,0 +1,5 @@
+# Export checks on the browser run (2026-11-23)
+gdalinfo: Size is 833, 835 | ID["EPSG",32632]] | Origin = (246280.000000000000000,868420.000000000000000) | Pixel Size = (20.000000000000000,-20.000000000000000) | Band 1 Block=833x9 Type=Byte, ColorInterp=Gray | NoData Value=0
+GeoJSON class 2: valid=True, polygon map area 19.3656 km2, class-grid map area 19.3656 km2
+GeoJSON class 3: valid=True, polygon map area 3.0528 km2, class-grid map area 3.0528 km2
+CSV rows 39 | ['area,flood (all),22.403395005218368,km2', 'population,modelled residents in flood,4987.121807577972,persons (GHS-POP 2025)']

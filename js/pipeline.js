@@ -1,21 +1,31 @@
 /* FloodScope analysis pipeline: from an area and two Sentinel-1 acquisitions to a classified grid and exposure summary.
    Runs in a Web Worker in the browser and directly in Node for tests. Progress messages report steps actually done. */
 import { stacSearch, signedHref, readToGrid, readMosaic, defineEpsg, project } from './io.js';
-import { DEFAULTS, focalMean, toDb, otsu, slopeDeg, classify, summarise, cellAreaKm2, makeGrid, resolutionFor, rasterisePolygons, CLS } from './engine.js';
+import { DEFAULTS, focalMean, toDb, otsu, slopeDeg, classify, summarise, cellAreaKm2, utmScale, makeGrid, resolutionFor, rasterisePolygons, CLS } from './engine.js';
 
 export const VERSION = '1.0.0';
 
-/** Sentinel-1 RTC acquisitions over a lon/lat bbox, grouped so only comparable pairs (same relative orbit and pass) are offered. */
+/** Sentinel-1 RTC acquisitions over a lon/lat bbox. Slices of one datatake (same day, platform, relative orbit and pass)
+    are merged into one acquisition, so an area that straddles two slices is read from both. Scenes without VV (HH/HV over
+    polar regions) are left out. Returns {list, truncated}. */
 export async function listAcquisitions(bbox, start, end, signal) {
+  const MAX = 400;
   const items = await stacSearch({ collections: ['sentinel-1-rtc'], bbox, datetime: `${start}/${end}`,
-    sortby: [{ field: 'datetime', direction: 'asc' }] }, { signal, maxItems: 400 });
-  return items.map(it => ({
-    id: it.id, datetime: it.properties.datetime, platform: it.properties.platform,
-    orbitState: it.properties['sat:orbit_state'], relativeOrbit: it.properties['sat:relative_orbit'],
-    epsg: it.properties['proj:epsg'], bbox: it.bbox, geometry: it.geometry,
-    polarisations: it.properties['sar:polarizations'] || Object.keys(it.assets).filter(k => k === 'vv' || k === 'vh').map(k => k.toUpperCase()),
-    vv: it.assets.vv && it.assets.vv.href, vh: it.assets.vh && it.assets.vh.href,
-  }));
+    sortby: [{ field: 'datetime', direction: 'asc' }] }, { signal, maxItems: MAX });
+  const groups = new Map();
+  for (const it of items) {
+    if (!it.assets.vv) continue;
+    const p = it.properties, key = `${p.datetime.slice(0, 10)}|${p.platform}|${p['sat:relative_orbit']}|${p['sat:orbit_state']}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { id: it.id, ids: [], datetime: p.datetime, platform: p.platform, orbitState: p['sat:orbit_state'], relativeOrbit: p['sat:relative_orbit'],
+            epsg: p['proj:epsg'], vv: [], vh: [] };
+      groups.set(key, g);
+    }
+    g.ids.push(it.id); g.vv.push(it.assets.vv.href); if (it.assets.vh) g.vh.push(it.assets.vh.href);
+  }
+  const list = [...groups.values()].map(g => ({ ...g, vh: g.vh.length === g.vv.length ? g.vh : [] }));
+  return { list, truncated: items.length >= MAX };
 }
 
 /** Area of a lon/lat polygon ring in km^2 (spherical excess on a sphere of mean Earth radius). */
@@ -42,7 +52,7 @@ async function popUrls(base, bbox) {
 
 /** Run the analysis. aoi: {type:'Polygon', coordinates:[ring]} in lon/lat. pre/post: acquisitions from listAcquisitions.
     opts: {params, base (URL of the app root for the population tiles), zones (optional GeoJSON FeatureCollection), onProgress, signal}. */
-export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = null, onProgress = () => {}, signal }) {
+export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = null, label = null, onProgress = () => {}, signal }) {
   const p = { ...DEFAULTS, ...params };
   const t0 = Date.now(), log = [];
   const step = (msg) => { log.push({ t: (Date.now() - t0) / 1000, msg }); onProgress(msg); };
@@ -55,6 +65,8 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
   if (!res) throw new Error(`The area is ${area.toFixed(0)} km²; the limit for an in-browser run is 3,600 km²`);
   const lons = ring.map(c => c[0]), lats = ring.map(c => c[1]);
   const bbox = [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
+  // the permanent-water layer (JRC GSW) covers 56 S to 78 N; outside it permanent water could not be excluded
+  if (bbox[1] < -56 || bbox[3] > 78) throw new Error('FloodScope works between 56° S and 78° N, where the permanent-water layer is available');
 
   // grid in the after-scene's UTM CRS
   const crs = post.epsg, crsName = defineEpsg(crs);
@@ -66,12 +78,16 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
 
   // radar
   const S = 'sentinel-1-rtc';
-  const read = async (href, label) => { step(`Reading ${label}`); return readToGrid(await signedHref(href, S, signal), grid, { method: 'average', signal }); };
+  const read = async (hrefs, label) => {
+    step(`Reading ${label}${hrefs.length > 1 ? ` (${hrefs.length} slices)` : ''}`);
+    return readMosaic(await Promise.all(hrefs.map(h => signedHref(h, S, signal))), grid, { method: 'average', signal });
+  };
+  const hasVH = pre.vh.length && post.vh.length;
   const lin = {
     preVV: await read(pre.vv, `VV before (${pre.datetime.slice(0, 10)})`),
     postVV: await read(post.vv, `VV after (${post.datetime.slice(0, 10)})`),
-    preVH: pre.vh ? await read(pre.vh, 'VH before') : null,
-    postVH: post.vh ? await read(post.vh, 'VH after') : null,
+    preVH: hasVH ? await read(pre.vh, 'VH before') : null,
+    postVH: hasVH ? await read(post.vh, 'VH after') : null,
   };
   step(`Speckle filter: ${p.speckleWindow} × ${p.speckleWindow} focal mean of linear backscatter (after averaging to ${res} m), then dB`);
   const db = {};
@@ -111,14 +127,23 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
   const sample = new Float32Array(grid.n); let m = 0;
   for (let i = 0; i < grid.n; i++) {
     const v = db.postVV[i]; if (!(v === v)) continue;
-    if (occ[i] === occ[i] && occ[i] >= p.permanentOccurrence) continue;
+    if (occ[i] === occ[i] && occ[i] >= p.permanentOccurrence && occ[i] <= 100) continue;
     if (slope[i] === slope[i] && slope[i] > p.slopeMax) continue;
     sample[m++] = v;
   }
   const ot = otsu(sample.subarray(0, m), -30, 0, 0.1);
+  // the automatic threshold is used only when the histogram has two separate peaks, the smaller class is at least 2% of
+  // pixels, and the split lies in the plausible range for water in VV gamma0
+  const why = [];
+  if (!(ot.t === ot.t)) why.push('too few pixels');
+  else {
+    if (ot.valleyRatio > 0.5) why.push(`no clear second peak (valley ratio ${ot.valleyRatio.toFixed(2)})`);
+    if (ot.minorShare < 0.02) why.push(`smaller class only ${(ot.minorShare * 100).toFixed(1)}%`);
+    if (ot.t < p.otsuMin || ot.t > p.otsuMax) why.push(`Otsu ${ot.t.toFixed(1)} dB outside ${p.otsuMin} to ${p.otsuMax} dB`);
+  }
   let threshold = p.thresholdVV, thresholdSource = 'fixed';
-  if (p.autoThreshold && ot.t === ot.t && ot.t >= p.otsuMin && ot.t <= p.otsuMax && ot.bimodality >= 0.5) { threshold = ot.t; thresholdSource = 'otsu'; }
-  else if (p.autoThreshold) thresholdSource = 'fixed (automatic threshold rejected: ' + (ot.t === ot.t ? `Otsu ${ot.t.toFixed(1)} dB, bimodality ${ot.bimodality.toFixed(2)}` : 'too few pixels') + ')';
+  if (p.autoThreshold && !why.length) { threshold = ot.t; thresholdSource = 'otsu'; }
+  else if (p.autoThreshold) thresholdSource = `default (automatic threshold not used: ${why.join('; ')})`;
   step(`Water threshold on VV after: ${threshold.toFixed(1)} dB (${thresholdSource})`);
 
   // zones
@@ -135,7 +160,10 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
     zoneIdx = rasterisePolygons(rings, grid.w, grid.h); zoneNames = names;
   }
 
-  const layers = { ...db, occurrence: occ, slope, landcover, popDensity, inAoi, zoneIdx };
+  // ground area of each pixel: UTM map area divided by the square of the point scale factor at the column's easting
+  const colAreaKm2 = new Float64Array(grid.w);
+  for (let x = 0; x < grid.w; x++) { const k = utmScale(grid.x0 + (x + 0.5) * res); colAreaKm2[x] = res * res / (k * k) / 1e6; }
+  const layers = { ...db, occurrence: occ, slope, landcover, popDensity, inAoi, zoneIdx, colAreaKm2 };
   const result = reclassify(layers, grid, { ...p, threshold }, zoneNames);
   step(`Done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   return {
@@ -143,7 +171,8 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
     threshold: { value: threshold, source: thresholdSource, otsu: ot },
     params: { ...p, threshold },
     meta: {
-      app: 'FloodScope', version: VERSION, runAt: new Date().toISOString(), aoi, aoiAreaKm2: area, resolutionM: res,
+      app: 'FloodScope', version: VERSION, runAt: new Date().toISOString(), label: label || null, aoi, aoiAreaKm2: area, resolutionM: res,
+      areas: 'ground areas: UTM pixel area corrected by the point scale factor at each column',
       crs: `EPSG:${crs}`, pre: strip(pre), post: strip(post), log,
       sources: {
         radar: 'Sentinel-1 RTC (gamma0, VV and VH), Microsoft Planetary Computer, CC BY 4.0; contains modified Copernicus Sentinel data',
@@ -156,13 +185,13 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
     },
   };
 }
-const strip = a => ({ id: a.id, datetime: a.datetime, platform: a.platform, orbitState: a.orbitState, relativeOrbit: a.relativeOrbit, epsg: a.epsg });
+const strip = a => ({ id: a.id, slices: a.ids, datetime: a.datetime, platform: a.platform, orbitState: a.orbitState, relativeOrbit: a.relativeOrbit, epsg: a.epsg, polarisations: a.vh.length ? 'VV, VH' : 'VV' });
 
 /** Classify and summarise again with new parameters (threshold, change, slope, permanence) without reading data. */
 export function reclassify(layers, grid, p, zoneNames) {
   const cls = classify(layers, grid.n, p);
-  const summary = summarise(cls, { pixelAreaM2: grid.res * grid.res, popDensity: layers.popDensity, landcover: layers.landcover,
-    zones: layers.zoneIdx, nZones: zoneNames ? zoneNames.length : 0 });
+  const summary = summarise(cls, { pixelAreaM2: grid.res * grid.res, colAreaKm2: layers.colAreaKm2, width: grid.w, popDensity: layers.popDensity,
+    landcover: layers.landcover, zones: layers.zoneIdx, nZones: zoneNames ? zoneNames.length : 0, inAoi: layers.inAoi });
   if (summary.zones) summary.zones = summary.zones.map(z => ({ ...z, name: zoneNames[z.zone] })).filter(z => z.floodKm2 > 0).sort((a, b) => b.floodKm2 - a.floodKm2);
   return { cls, summary };
 }
