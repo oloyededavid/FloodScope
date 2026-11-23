@@ -1,0 +1,48 @@
+{
+ "reference": "UNOSAT FL20221019NGA, VIIRS cumulative satellite-detected water 13-17 Oct 2022 (CC BY-SA). Not ground truth.",
+ "floodscope_grid": {
+  "file": "class grid exported by FloodScope from the Lokoja example (tests/browser_e2e.cjs)",
+  "resolution_m": 20.0,
+  "crs": "EPSG:32632"
+ },
+ "compared_area_km2": 220.212,
+ "area_km2": {
+  "floodscope_flood_and_water_before": 35.741,
+  "unosat_flood": 73.945,
+  "floodscope_all_water": 56.632,
+  "unosat_flood_and_permanent": 112.69
+ },
+ "flood_20m": {
+  "cells": 550530,
+  "both": 47088,
+  "floodscope_only": 42265,
+  "unosat_only": 137775,
+  "neither": 323402,
+  "agreement": 0.673,
+  "iou": 0.2073,
+  "share_of_unosat_found": 0.2547,
+  "share_of_floodscope_confirmed": 0.527
+ },
+ "all_water_20m": {
+  "cells": 550530,
+  "both": 141465,
+  "floodscope_only": 116,
+  "unosat_only": 140261,
+  "neither": 268688,
+  "agreement": 0.745,
+  "iou": 0.5019,
+  "share_of_unosat_found": 0.5021,
+  "share_of_floodscope_confirmed": 0.9992
+ },
+ "all_water_400m_blocks": {
+  "cells": 1388,
+  "both": 334,
+  "floodscope_only": 0,
+  "unosat_only": 387,
+  "neither": 667,
+  "agreement": 0.7212,
+  "iou": 0.4632,
+  "share_of_unosat_found": 0.4632,
+  "share_of_floodscope_confirmed": 1.0
+ }
+}

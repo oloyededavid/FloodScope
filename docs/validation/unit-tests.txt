@@ -1,0 +1,34 @@
+# node tests/engine_test.mjs && node tests/trace_test.mjs (2026-11-23)
+PASS  focalMean centre  5
+PASS  focalMean corner  3
+PASS  focalMean skips NaN  5.375
+PASS  focalMean keeps NaN pixel NaN
+PASS  toDb values
+PASS  otsu threshold in the middle of the gap  t=-14.55
+PASS  otsu bimodality high  0.998
+PASS  otsu too few pixels
+PASS  slope 45 deg  45
+PASS  slope flat
+PASS  classify flood high
+PASS  classify flood medium (VH barely changed)
+PASS  classify dry
+PASS  classify water before (no change)
+PASS  classify permanent first
+PASS  classify steep
+PASS  classify no data
+PASS  summary flood area
+PASS  summary population  0.6000000000000001
+PASS  summary land cover
+PASS  summary zones
+PASS  summary missing population counted
+PASS  cell area at equator  0.8586
+PASS  cell area shrinks with latitude
+PASS  grid snapped
+PASS  utm zone Lokoja
+PASS  utm zone south
+PASS  resolution choice
+PASS  ring area 1x1 degree at equator  12363.7
+PASS  rasterise square
+ALL PASSED
+polygons 3 holes [ 1, 0, 0 ] area 26 expected 26
+PASS

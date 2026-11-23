@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FloodScope · flood extent and exposure from Sentinel-1</title>
+<meta name="description" content="Map where flood water appeared between two Sentinel-1 radar acquisitions, anywhere on Earth, and estimate the people and land cover inside it. Runs in your browser on open data.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<a class="skip" href="#tool">Skip to the tool</a>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#"><span class="mark" aria-hidden="true"></span>FloodScope</a>
+    <nav aria-label="Sections">
+      <a href="#tool">Map a flood</a>
+      <a href="#method">Method</a>
+      <a href="#data">Data</a>
+      <a href="#limits">Limits</a>
+      <a href="https://oloyededavid.github.io/geospatial-rs-portfolio/">Portfolio</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="intro wrap">
+  <p class="meta">Flood extent and exposure explorer</p>
+  <h1>Where did the water go, and who lived there?</h1>
+  <p class="lead">FloodScope compares two Sentinel-1 radar images of the same place, one before and one after a flood, and maps the ground that turned to open water. It then counts the modelled population and the land cover inside that water. Radar sees through cloud, so it works in the rain that causes floods. Everything is computed in your browser from open data, anywhere on Earth since October 2014.</p>
+  <div class="intro-actions">
+    <button class="btn primary" id="demo">Run the Lokoja example (October 2022)</button>
+    <a class="link" href="#method">How it decides what is flood water <span class="arrow" aria-hidden="true">↗</span></a>
+  </div>
+  <p class="note">The example runs the full analysis live on the original imagery; it usually takes under a minute.</p>
+</section>
+
+<section class="tool" id="tool" aria-label="Flood mapping tool">
+  <div class="map-wrap">
+    <div id="map" role="region" aria-label="Map"></div>
+    <div class="map-tools">
+      <button class="chip" id="draw" aria-pressed="false" title="Draw a rectangle on the map">Draw area</button>
+      <div class="swipe" id="swipe-box" hidden>
+        <label for="swipe" class="meta">Radar before ⟷ after</label>
+        <input type="range" id="swipe" min="0" max="100" value="50" aria-label="Swipe between the radar images before and after">
+      </div>
+    </div>
+    <div class="legend" id="legend" hidden></div>
+    <div class="inspect" id="inspect" hidden aria-live="polite"></div>
+  </div>
+
+  <aside class="panel" aria-label="Steps">
+    <ol class="steps">
+      <li class="step" id="s-place">
+        <h2><span class="n">1</span>Place</h2>
+        <form id="search" class="search" role="search">
+          <label class="vh" for="q">Search a place</label>
+          <input id="q" type="search" placeholder="Search a town or river, or draw on the map" autocomplete="off">
+          <button class="btn" type="submit">Find</button>
+        </form>
+        <ul class="results" id="search-results" hidden></ul>
+        <p class="small" id="aoi-info">No area yet. Draw a rectangle (up to 3,600 km²) or search a place.</p>
+      </li>
+
+      <li class="step" id="s-dates">
+        <h2><span class="n">2</span>Radar images</h2>
+        <div class="row">
+          <label>From <input type="date" id="d0" value="2022-07-01" min="2014-10-03"></label>
+          <label>To <input type="date" id="d1" value="2022-11-30" min="2014-10-03"></label>
+          <button class="btn" id="list">List images</button>
+        </div>
+        <div class="timeline" id="timeline" aria-live="polite"></div>
+        <p class="small" id="pick-info">Choose a “before” image, then an “after” image from the same orbit.</p>
+      </li>
+
+      <li class="step" id="s-run">
+        <h2><span class="n">3</span>Analyse</h2>
+        <details class="settings">
+          <summary>Settings</summary>
+          <label class="check"><input type="checkbox" id="p-auto" checked> Automatic water threshold (Otsu), when the histogram allows</label>
+          <label>Water threshold, VV after <output id="o-thr">−18.0 dB</output><input type="range" id="p-thr" min="-26" max="-12" step="0.1" value="-18"></label>
+          <label>Darkening needed <output id="o-chg">−3.0 dB</output><input type="range" id="p-chg" min="-8" max="-1" step="0.5" value="-3"></label>
+          <label>Slope limit <output id="o-slp">5°</output><input type="range" id="p-slp" min="1" max="15" step="1" value="5"></label>
+          <label>Permanent water from <output id="o-occ">80%</output> of years<input type="range" id="p-occ" min="50" max="100" step="5" value="80"></label>
+          <label class="check"><input type="checkbox" id="p-zones" checked> Break down by administrative area (geoBoundaries)</label>
+        </details>
+        <button class="btn primary wide" id="run" disabled>Map the flood</button>
+        <ol class="log" id="log" aria-live="polite"></ol>
+      </li>
+    </ol>
+  </aside>
+</section>
+
+<section class="results-sec wrap" id="results" hidden aria-labelledby="r-title">
+  <div class="r-head">
+    <h2 id="r-title">Result</h2>
+    <p class="small" id="r-sub"></p>
+  </div>
+  <div class="figures" id="figures"></div>
+  <div class="r-grid">
+    <figure class="hist">
+      <figcaption><span class="meta">VV backscatter after the event</span><span class="small">Drag the line to change the water threshold; the map and numbers update.</span></figcaption>
+      <canvas id="hist" width="640" height="220" role="img" aria-label="Histogram of radar backscatter after the event"></canvas>
+    </figure>
+    <figure class="lc">
+      <figcaption><span class="meta">Flooded land cover</span><span class="small">ESA WorldCover 2021, km²</span></figcaption>
+      <div id="lc"></div>
+    </figure>
+  </div>
+  <div class="zones" id="zones"></div>
+  <div class="exports">
+    <h3 class="meta">Download</h3>
+    <div class="ex-row">
+      <button class="btn" data-export="geojson">Flood extent (GeoJSON)</button>
+      <button class="btn" data-export="geotiff">Class grid (GeoTIFF)</button>
+      <button class="btn" data-export="csv">Statistics (CSV)</button>
+      <button class="btn" data-export="png">Map (PNG)</button>
+      <button class="btn" data-export="json">Processing metadata (JSON)</button>
+      <button class="btn" data-export="pdf">Report (print to PDF)</button>
+    </div>
+  </div>
+  <p class="caveat"><strong>Read with care.</strong> “Modelled residents” are GHS-POP 2025 estimates of where people live, spread evenly inside each 1 km cell; they are not counts of people affected. Radar misses water under trees and between buildings, and can mistake smooth dry ground for water.</p>
+</section>
+
+<section class="doc wrap" id="method">
+  <h2>Method</h2>
+  <div class="cols">
+    <div>
+      <h3>1 · Radar images</h3>
+      <p>Sentinel-1 radiometrically terrain-corrected backscatter (gamma0, VV and VH, 10 m) from Microsoft Planetary Computer. Before and after must share a relative orbit and pass, so the viewing geometry is the same. The analysis grid uses the after image's UTM zone at 20 m (40 m for areas over 900 km²); the 10 m power is averaged into each grid pixel.</p>
+      <h3>2 · Speckle</h3>
+      <p>A 3 × 3 focal mean of linear backscatter (a 60 m window at 20 m), converted to decibels afterwards.</p>
+      <h3>3 · Water and change</h3>
+      <p>A pixel is flood water if, after the event, its VV backscatter is below the water threshold <em>and</em> it darkened by at least 3 dB since before. Calm water reflects radar away from the sensor, so it is dark. The threshold is −18 dB, or the Otsu split of the after-image histogram when that split is between −24 and −14 dB and the histogram is clearly two-peaked (between-class variance at least half the total).</p>
+    </div>
+    <div>
+      <h3>4 · What is excluded</h3>
+      <p>Permanent water: pixels that were water in at least 80% of observations in the JRC Global Surface Water record (1984–2020). Slopes above 5°, computed from Copernicus DEM GLO-30, where radar shadow mimics water. Pixels dark both before and after are reported as “water before”, not as flood.</p>
+      <h3>5 · Confidence</h3>
+      <p>High where VH also darkened by at least the same amount, medium where only VV did.</p>
+      <h3>6 · Exposure</h3>
+      <p>Modelled residents: GHS-POP 2025 counts per 30 arc-second cell, turned into a density and multiplied by the flooded area in each cell. Land cover: ESA WorldCover 2021 class of each flooded pixel. Administrative areas: geoBoundaries, second level where available.</p>
+      <p><a class="link" href="https://github.com/oloyededavid/FloodScope/blob/main/docs/methodology.md">Full methodology, with tests <span class="arrow" aria-hidden="true">↗</span></a></p>
+    </div>
+  </div>
+</section>
+
+<section class="doc wrap" id="data">
+  <h2>Data</h2>
+  <table class="data-table">
+    <thead><tr><th>Layer</th><th>Dataset</th><th>Resolution</th><th>Licence</th></tr></thead>
+    <tbody>
+      <tr><td>Radar</td><td>Sentinel-1 RTC, Microsoft Planetary Computer (contains modified Copernicus Sentinel data)</td><td>10 m</td><td>CC BY 4.0</td></tr>
+      <tr><td>Permanent water</td><td>JRC Global Surface Water v1.3, occurrence 1984–2020 (Pekel et al., 2016)</td><td>30 m</td><td>Free with attribution</td></tr>
+      <tr><td>Terrain</td><td>Copernicus DEM GLO-30 (© DLR e.V. 2010–2014, © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the EU and ESA)</td><td>30 m</td><td>Copernicus DEM licence</td></tr>
+      <tr><td>Land cover</td><td>ESA WorldCover 2021 v200 (Zanaga et al., 2022)</td><td>10 m</td><td>CC BY 4.0</td></tr>
+      <tr><td>Population</td><td>GHS-POP R2023A, epoch 2025 (Schiavina et al., 2023), EC JRC</td><td>30″ (≈1 km)</td><td>CC BY 4.0</td></tr>
+      <tr><td>Boundaries</td><td>geoBoundaries gbOpen (Runfola et al., 2020)</td><td>vector</td><td>per country, mostly CC BY 4.0</td></tr>
+      <tr><td>Basemap</td><td>OpenFreeMap (© OpenStreetMap contributors); Sentinel-2 cloudless by EOX IT Services (contains modified Copernicus Sentinel data)</td><td>tiles</td><td>ODbL; CC BY-NC-SA 4.0</td></tr>
+      <tr><td>Place search</td><td>Nominatim (© OpenStreetMap contributors)</td><td>—</td><td>ODbL</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="doc wrap" id="limits">
+  <h2>Limits</h2>
+  <ul class="limits">
+    <li>Floods under forest canopy, in dense towns and in shallow water with emerging vegetation are often missed: the radar signal there brightens or stays bright.</li>
+    <li>Dry sand, smooth tarmac, airports and some burnt or bare ground look as dark as water. The change test removes most of these, but not ones that dried or burned between the two dates.</li>
+    <li>Sentinel-1 revisits every 6 or 12 days (12 days from December 2021, when Sentinel-1B failed, until Sentinel-1C joined in 2025), so the after image may miss the peak.</li>
+    <li>There is no ground truth here. For the Lokoja example the result is compared with an independent satellite product (UNOSAT); agreement is not accuracy.</li>
+    <li>Population is spread evenly within 1 km cells, so exposure in a cell that is partly flooded is approximate.</li>
+    <li>Areas are capped at 3,600 km² so the analysis fits in browser memory.</li>
+  </ul>
+</section>
+</main>
+
+<footer class="foot wrap">
+  <p class="small">FloodScope v<span id="ver">1.0.0</span> · built by <a class="link" href="https://oloyededavid.github.io/geospatial-rs-portfolio/">David Oloyede</a> · <a class="link" href="https://github.com/oloyededavid/FloodScope">source</a> · code MIT, data under their own licences</p>
+</footer>
+
+<div class="report" id="report" aria-hidden="true"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

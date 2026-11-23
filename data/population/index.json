@@ -1,0 +1,456 @@
+{
+ "source": "GHS-POP R2023A, epoch 2025, 30 arc-second, WGS 84 (EC JRC, CC BY 4.0)",
+ "tile_deg": 30,
+ "rounding": 0.1,
+ "units": "persons per cell",
+ "tiles": [
+  {
+   "file": "pop2025_S60_W180.tif",
+   "west": -180,
+   "south": -60,
+   "east": -150,
+   "north": -30,
+   "persons": 638
+  },
+  {
+   "file": "pop2025_S60_W090.tif",
+   "west": -90,
+   "south": -60,
+   "east": -60,
+   "north": -30,
+   "persons": 34087556
+  },
+  {
+   "file": "pop2025_S60_W060.tif",
+   "west": -60,
+   "south": -60,
+   "east": -30,
+   "north": -30,
+   "persons": 26478944
+  },
+  {
+   "file": "pop2025_S60_W030.tif",
+   "west": -30,
+   "south": -60,
+   "east": 0,
+   "north": -30,
+   "persons": 354
+  },
+  {
+   "file": "pop2025_S60_E000.tif",
+   "west": 0,
+   "south": -60,
+   "east": 30,
+   "north": -30,
+   "persons": 15601655
+  },
+  {
+   "file": "pop2025_S60_E030.tif",
+   "west": 30,
+   "south": -60,
+   "east": 60,
+   "north": -30,
+   "persons": 1113191
+  },
+  {
+   "file": "pop2025_S60_E090.tif",
+   "west": 90,
+   "south": -60,
+   "east": 120,
+   "north": -30,
+   "persons": 2535383
+  },
+  {
+   "file": "pop2025_S60_E120.tif",
+   "west": 120,
+   "south": -60,
+   "east": 150,
+   "north": -30,
+   "persons": 10736252
+  },
+  {
+   "file": "pop2025_S60_E150.tif",
+   "west": 150,
+   "south": -60,
+   "east": 180,
+   "north": -30,
+   "persons": 12602187
+  },
+  {
+   "file": "pop2025_S30_W180.tif",
+   "west": -180,
+   "south": -30,
+   "east": -150,
+   "north": 0,
+   "persons": 481438
+  },
+  {
+   "file": "pop2025_S30_W150.tif",
+   "west": -150,
+   "south": -30,
+   "east": -120,
+   "north": 0,
+   "persons": 268700
+  },
+  {
+   "file": "pop2025_S30_W120.tif",
+   "west": -120,
+   "south": -30,
+   "east": -90,
+   "north": 0,
+   "persons": 34158
+  },
+  {
+   "file": "pop2025_S30_W090.tif",
+   "west": -90,
+   "south": -30,
+   "east": -60,
+   "north": 0,
+   "persons": 78543640
+  },
+  {
+   "file": "pop2025_S30_W060.tif",
+   "west": -60,
+   "south": -30,
+   "east": -30,
+   "north": 0,
+   "persons": 219401712
+  },
+  {
+   "file": "pop2025_S30_W030.tif",
+   "west": -30,
+   "south": -30,
+   "east": 0,
+   "north": 0,
+   "persons": 4842
+  },
+  {
+   "file": "pop2025_S30_E000.tif",
+   "west": 0,
+   "south": -30,
+   "east": 30,
+   "north": 0,
+   "persons": 212870144
+  },
+  {
+   "file": "pop2025_S30_E030.tif",
+   "west": 30,
+   "south": -30,
+   "east": 60,
+   "north": 0,
+   "persons": 250492800
+  },
+  {
+   "file": "pop2025_S30_E060.tif",
+   "west": 60,
+   "south": -30,
+   "east": 90,
+   "north": 0,
+   "persons": 73441
+  },
+  {
+   "file": "pop2025_S30_E090.tif",
+   "west": 90,
+   "south": -30,
+   "east": 120,
+   "north": 0,
+   "persons": 217974448
+  },
+  {
+   "file": "pop2025_S30_E120.tif",
+   "west": 120,
+   "south": -30,
+   "east": 150,
+   "north": 0,
+   "persons": 36422700
+  },
+  {
+   "file": "pop2025_S30_E150.tif",
+   "west": 150,
+   "south": -30,
+   "east": 180,
+   "north": 0,
+   "persons": 8871122
+  },
+  {
+   "file": "pop2025_N00_W180.tif",
+   "west": -180,
+   "south": 0,
+   "east": -150,
+   "north": 30,
+   "persons": 1575332
+  },
+  {
+   "file": "pop2025_N00_W120.tif",
+   "west": -120,
+   "south": 0,
+   "east": -90,
+   "north": 30,
+   "persons": 149638368
+  },
+  {
+   "file": "pop2025_N00_W090.tif",
+   "west": -90,
+   "south": 0,
+   "east": -60,
+   "north": 30,
+   "persons": 191057808
+  },
+  {
+   "file": "pop2025_N00_W060.tif",
+   "west": -60,
+   "south": 0,
+   "east": -30,
+   "north": 30,
+   "persons": 2768538
+  },
+  {
+   "file": "pop2025_N00_W030.tif",
+   "west": -30,
+   "south": 0,
+   "east": 0,
+   "north": 30,
+   "persons": 170932432
+  },
+  {
+   "file": "pop2025_N00_E000.tif",
+   "west": 0,
+   "south": 0,
+   "east": 30,
+   "north": 30,
+   "persons": 394147552
+  },
+  {
+   "file": "pop2025_N00_E030.tif",
+   "west": 30,
+   "south": 0,
+   "east": 60,
+   "north": 30,
+   "persons": 423909408
+  },
+  {
+   "file": "pop2025_N00_E060.tif",
+   "west": 60,
+   "south": 0,
+   "east": 90,
+   "north": 30,
+   "persons": 1549639168
+  },
+  {
+   "file": "pop2025_N00_E090.tif",
+   "west": 90,
+   "south": 0,
+   "east": 120,
+   "north": 30,
+   "persons": 985649856
+  },
+  {
+   "file": "pop2025_N00_E120.tif",
+   "west": 120,
+   "south": 0,
+   "east": 150,
+   "north": 30,
+   "persons": 180513312
+  },
+  {
+   "file": "pop2025_N00_E150.tif",
+   "west": 150,
+   "south": 0,
+   "east": 180,
+   "north": 30,
+   "persons": 253042
+  },
+  {
+   "file": "pop2025_N30_W180.tif",
+   "west": -180,
+   "south": 30,
+   "east": -150,
+   "north": 60,
+   "persons": 51569
+  },
+  {
+   "file": "pop2025_N30_W150.tif",
+   "west": -150,
+   "south": 30,
+   "east": -120,
+   "north": 60,
+   "persons": 30797330
+  },
+  {
+   "file": "pop2025_N30_W120.tif",
+   "west": -120,
+   "south": 30,
+   "east": -90,
+   "north": 60,
+   "persons": 123509216
+  },
+  {
+   "file": "pop2025_N30_W090.tif",
+   "west": -90,
+   "south": 30,
+   "east": -60,
+   "north": 60,
+   "persons": 198635408
+  },
+  {
+   "file": "pop2025_N30_W060.tif",
+   "west": -60,
+   "south": 30,
+   "east": -30,
+   "north": 60,
+   "persons": 554420
+  },
+  {
+   "file": "pop2025_N30_W030.tif",
+   "west": -30,
+   "south": 30,
+   "east": 0,
+   "north": 60,
+   "persons": 165436672
+  },
+  {
+   "file": "pop2025_N30_E000.tif",
+   "west": 0,
+   "south": 30,
+   "east": 30,
+   "north": 60,
+   "persons": 536442752
+  },
+  {
+   "file": "pop2025_N30_E030.tif",
+   "west": 30,
+   "south": 30,
+   "east": 60,
+   "north": 60,
+   "persons": 451352640
+  },
+  {
+   "file": "pop2025_N30_E060.tif",
+   "west": 60,
+   "south": 30,
+   "east": 90,
+   "north": 60,
+   "persons": 391018560
+  },
+  {
+   "file": "pop2025_N30_E090.tif",
+   "west": 90,
+   "south": 30,
+   "east": 120,
+   "north": 60,
+   "persons": 669970304
+  },
+  {
+   "file": "pop2025_N30_E120.tif",
+   "west": 120,
+   "south": 30,
+   "east": 150,
+   "north": 60,
+   "persons": 425569312
+  },
+  {
+   "file": "pop2025_N30_E150.tif",
+   "west": 150,
+   "south": 30,
+   "east": 180,
+   "north": 60,
+   "persons": 380245
+  },
+  {
+   "file": "pop2025_N60_W180.tif",
+   "west": -180,
+   "south": 60,
+   "east": -150,
+   "north": 90,
+   "persons": 115742
+  },
+  {
+   "file": "pop2025_N60_W150.tif",
+   "west": -150,
+   "south": 60,
+   "east": -120,
+   "north": 90,
+   "persons": 664711
+  },
+  {
+   "file": "pop2025_N60_W120.tif",
+   "west": -120,
+   "south": 60,
+   "east": -90,
+   "north": 90,
+   "persons": 47402
+  },
+  {
+   "file": "pop2025_N60_W090.tif",
+   "west": -90,
+   "south": 60,
+   "east": -60,
+   "north": 90,
+   "persons": 30432
+  },
+  {
+   "file": "pop2025_N60_W060.tif",
+   "west": -60,
+   "south": 60,
+   "east": -30,
+   "north": 90,
+   "persons": 55822
+  },
+  {
+   "file": "pop2025_N60_W030.tif",
+   "west": -30,
+   "south": 60,
+   "east": 0,
+   "north": 90,
+   "persons": 455870
+  },
+  {
+   "file": "pop2025_N60_E000.tif",
+   "west": 0,
+   "south": 60,
+   "east": 30,
+   "north": 90,
+   "persons": 9795052
+  },
+  {
+   "file": "pop2025_N60_E030.tif",
+   "west": 30,
+   "south": 60,
+   "east": 60,
+   "north": 90,
+   "persons": 4997276
+  },
+  {
+   "file": "pop2025_N60_E060.tif",
+   "west": 60,
+   "south": 60,
+   "east": 90,
+   "north": 90,
+   "persons": 2543444
+  },
+  {
+   "file": "pop2025_N60_E090.tif",
+   "west": 90,
+   "south": 60,
+   "east": 120,
+   "north": 90,
+   "persons": 207763
+  },
+  {
+   "file": "pop2025_N60_E120.tif",
+   "west": 120,
+   "south": 60,
+   "east": 150,
+   "north": 90,
+   "persons": 593648
+  },
+  {
+   "file": "pop2025_N60_E150.tif",
+   "west": 150,
+   "south": 60,
+   "east": 180,
+   "north": 90,
+   "persons": 82731
+  }
+ ]
+}

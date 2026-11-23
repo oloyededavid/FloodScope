@@ -1,0 +1,13 @@
+run seconds 37.498
+log: Starting | Analysis grid: 833 × 835 pixels of 20 m in EPSG:32632 | Reading VV before (2022-08-02) | Reading VV after (2022-10-13) | Reading VH before | Reading VH after | Speckle filter: 3 × 3 focal mean of linear backscatter (after averaging to 20 m), then dB | Reading JRC Global Surface Water occurrence | Reading Copernicus DEM GLO-30 and computing slope | Reading ESA WorldCover 2021 | Reading GHS-POP 2025 population | Water threshold on VV after: -18.0 dB (fixed (automatic threshold rejected: Otsu -12.6 dB, bimodality 0.85)) | Rasterising administrative areas | Done in 32.2 s
+figures: 22.4km² of new water8.2% of the 275 km² analysed || 19.4km² high confidenceVV and VH both darkened; 3.05 km² medium || 4,970modelled residents in itGHS-POP 2025, 3,950 in high-confidence water || 20.9km² permanent waterexcluded; 13.3 km² was already water-like before
+zones rows: 4
+export geojson 764990 bytes tests/out/floodscope_2022-10-13_flood-extent.geojson
+export geotiff 696555 bytes tests/out/floodscope_2022-10-13_flood-classes.tif
+export csv 1661 bytes tests/out/floodscope_2022-10-13_flood-statistics.csv
+export json 3275 bytes tests/out/floodscope_2022-10-13_processing-metadata.json
+export png 381896 bytes tests/out/floodscope_2022-10-13_map.png
+figures at -20 dB: 9.63 | 7.83 | 1,052 | 20.9
+inspect: Pixel 416, 417 · 7.7749°, 6.7749° Classdry VV before−7.6 dBVV after−6.8 dB VV change0.8 dB VH change1.2 dB Water occurrence0% Slope1.5° Land coverCropland Residents584 /km²
+horizontal overflow at 390 px: 0
+console errors: none

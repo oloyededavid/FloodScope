@@ -1,0 +1,5 @@
+node_modules/
+__pycache__/
+*.pyc
+data/ghs_pop_2025_30ss.tif
+tests/out/
