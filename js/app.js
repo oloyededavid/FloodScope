@@ -28,10 +28,12 @@ const ask = (cmd, payload = {}, onProgress) => new Promise((resolve, reject) => 
 // ---------------------------------------------------------------- map
 const map = new maplibregl.Map({
   container: 'map', style: 'https://tiles.openfreemap.org/styles/positron', center: [6.76, 7.8], zoom: 2.2,
-  attributionControl: { compact: true }, preserveDrawingBuffer: true, cooperativeGestures: false,
+  attributionControl: false, preserveDrawingBuffer: true, cooperativeGestures: false,
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+// bottom-left: the results drawer covers the bottom-right corner
+map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-left');
 const ready = new Promise(r => map.on('load', r));
 ready.then(() => {
   map.addSource('s2', { type: 'raster', tileSize: 256, maxzoom: 15, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2024)',
@@ -51,15 +53,19 @@ function areaKm2(b) { // spherical rectangle
   return R * R * Math.abs((b[2] - b[0]) * r) * Math.abs(Math.sin(b[3] * r) - Math.sin(b[1] * r));
 }
 async function setAoi(b, label) {
+  const shift = Math.round(((b[0] + b[2]) / 2) / 360) * 360;   // the map repeats the world sideways
+  b = [b[0] - shift, b[1], b[2] - shift, b[3]];
   b = [Math.max(-180, b[0]), Math.max(-85, b[1]), Math.min(180, b[2]), Math.min(85, b[3])];
   const a = areaKm2(b);
   S.aoi = { bbox: b, ring: ringOf(b), area: a, label };
   await ready;
   map.getSource('aoi').setData({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [S.aoi.ring] } });
   const ok = a <= LIMIT_KM2 && a >= 0.5;
-  $('aoi-info').innerHTML = `${label ? `<strong>${esc(label)}</strong> · ` : ''}${fmt(a, 0)} km² ${ok ? '' : `<span style="color:#a1271b">— ${a > LIMIT_KM2 ? 'larger than the 3,600 km² limit; draw a smaller area' : 'too small'}</span>`}`;
+  S.aoi.ok = ok && b[1] >= -56 && b[3] <= 78;
+  $('aoi-info').hidden = false;
+  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${ok ? '' : ' warn'}">${fmt(a, 0)} km²</span>${ok ? '' : `<span class="warn small">${a > LIMIT_KM2 ? 'Too large' : 'Too small'}</span>`}`;
   searchSeq++; S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun();
-  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', ' <span style="color:#a1271b">— outside 56° S to 78° N, where the permanent-water layer exists</span>');
+  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', '<span class="warn small">Outside 56° S to 78° N, where the permanent-water layer exists</span>');
   return ok;
 }
 
@@ -106,7 +112,7 @@ $('search').addEventListener('submit', async ev => {
         const lat = +p.lat, lon = +p.lon, k = 0.09 / Math.cos(lat * Math.PI / 180);   // about 20 x 20 km around the place
         const box = [lon - k, lat - 0.09, lon + k, lat + 0.09];
         setAoi(box, p.name || p.display_name.split(',')[0]);
-        map.fitBounds([[box[0], box[1]], [box[2], box[3]]], { padding: 40, duration: 900 });
+        fitBox(box);
       };
       li.append(b); ul.append(li);
     }
@@ -159,7 +165,32 @@ function pick(a) {
   else if (trackKey(a) === trackKey(S.pre) && a.datetime > S.pre.datetime) S.post = a;
   renderTimeline(); updateRun();
 }
-function updateRun() { $('run').disabled = running || !(S.aoi && S.pre && S.post && S.aoi.area <= LIMIT_KM2 && S.aoi.bbox[1] >= -56 && S.aoi.bbox[3] <= 78); }
+function updateRun() {
+  $('run').disabled = running || !(S.aoi && S.aoi.ok && S.pre && S.post);
+  if (step === 0) $('next').disabled = !(S.aoi && S.aoi.ok);
+  if (step === 1) $('next').disabled = !(S.pre && S.post);
+}
+
+// ---------------------------------------------------------------- steps
+let step = 0;
+function go(n) {
+  step = n;
+  document.querySelectorAll('[data-pane]').forEach(p => { p.hidden = +p.dataset.pane !== n; });
+  document.querySelectorAll('.dots button').forEach(b => {
+    const k = +b.dataset.step; if (k === n) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+    b.classList.toggle('done', k < n);
+  });
+  $('back').hidden = n === 0; $('next').hidden = n === 2; $('run').hidden = n !== 2;
+  if (n === 1 && S.aoi && !S.acq.length) listImages();
+  updateRun();
+}
+document.querySelectorAll('.dots button').forEach(b => b.addEventListener('click', () => {
+  const k = +b.dataset.step;
+  if (k === 0 || (k === 1 && S.aoi && S.aoi.ok) || (k === 2 && S.pre && S.post)) go(k);
+}));
+$('back').addEventListener('click', () => go(step - 1));
+$('next').addEventListener('click', () => go(step + 1));
+const fitBox = b => map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: { top: 80, bottom: 140, left: window.innerWidth > 760 ? 380 : 40, right: 40 }, duration: 900 });
 
 // ---------------------------------------------------------------- settings
 // with the automatic threshold on, the fallback is always the documented default (-18 dB), never a value left on the slider
@@ -178,8 +209,8 @@ let running = false;
 async function runNow() {
   if (running || !S.aoi || !S.pre || !S.post) return;
   running = true; clearTimeout(rcTimer);
-  $('run').disabled = true; $('demo').disabled = true; log.innerHTML = '';
-  S.result = null; $('results').hidden = true; $('inspect').hidden = true;
+  $('run').disabled = true; $('demo').disabled = true; log.innerHTML = ''; $('log-box').hidden = false; $('log-box').open = true;
+  S.result = null; $('results').hidden = true; $('inspect').hidden = true; $('exports').hidden = true;
   logLine('Starting', 'now');
   let zones = null;
   if ($('p-zones').checked) zones = await loadZones(S.aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
@@ -187,7 +218,7 @@ async function runNow() {
     const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [S.aoi.ring] }, pre: S.pre, post: S.post, params: P(), base: BASE, zones, label: S.aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
     log.querySelectorAll('li.now').forEach(li => li.classList.remove('now'));
-    S.result = r; S.zonesSource = zones ? zones.source : null;
+    S.result = r; S.zonesSource = zones ? zones.source : null; $('log-box').open = false;
     $('p-thr').value = r.threshold.value; $('o-thr').textContent = `${fmt(r.threshold.value)} dB`.replace('-', '−');
     await drawResult(r, true);
   } catch (e) { logLine(e.message, 'err'); }
@@ -248,10 +279,10 @@ async function drawResult(r, fit) {
   applyVisibility();
   if (fit) {
     const lons = corners.map(c => c[0]), lats = corners.map(c => c[1]);
-    map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 30, duration: 900 });
+    fitBox([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]);
   }
   renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r);
-  $('swipe-box').hidden = false; $('results').hidden = false;
+  $('results').hidden = false; $('exports').hidden = false; $('r-title').textContent = 'Flood map';
 }
 function paintClasses(cls, g) {
   const c = document.createElement('canvas'); c.width = g.w; c.height = g.h;
@@ -264,7 +295,7 @@ function paintClasses(cls, g) {
   ctx.putImageData(img, 0, 0); return c;
 }
 function paintRadar(r) {
-  const g = r.grid, ctx = radarCanvas.getContext('2d'), img = ctx.createImageData(g.w, g.h), cut = Math.round(g.w * (+$('swipe').value) / 100);
+  const g = r.grid, ctx = radarCanvas.getContext('2d'), img = ctx.createImageData(g.w, g.h), cut = Math.round(g.w * swipeAt / 100);
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) {
     const i = y * g.w + x, v = x < cut ? r.pre[i] : r.post[i];
     if (!(v === v)) continue;
@@ -282,7 +313,8 @@ function setImage(id, canvas, below) {
     map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } }, below && map.getLayer(below) ? below : 'aoi-fill');
   }
 }
-$('swipe').addEventListener('input', () => { if (!S.result) return; if (!visible.radar) { visible.radar = true; renderLegend(); applyVisibility(); } paintRadar(S.result); setImage('radar', radarCanvas); });
+let swipeAt = 50;
+function onSwipe(v) { swipeAt = v; if (!S.result) return; if (!visible.radar) { visible.radar = true; const c = $('legend').querySelector('[data-k="radar"]'); if (c) c.checked = true; applyVisibility(); } paintRadar(S.result); setImage('radar', radarCanvas); }
 function applyVisibility() {
   if (map.getLayer('radar')) map.setLayoutProperty('radar', 'visibility', visible.radar ? 'visible' : 'none');
   if (map.getLayer('s2')) map.setLayoutProperty('s2', 'visibility', visible.s2 ? 'visible' : 'none');
@@ -291,7 +323,9 @@ function renderLegend() {
   const L = $('legend'); L.hidden = false;
   const rows = [['flood', 'Flood, high confidence', COLORS[2]], ['flood', 'Flood, medium confidence', COLORS[3]], ['perm', 'Permanent water', COLORS[4]],
     ['before', 'Water before the event', COLORS[6]], ['steep', 'Excluded: slope', COLORS[5]], ['radar', 'Radar image (swipe)', null], ['s2', 'Sentinel-2 cloudless basemap', null]];
-  L.innerHTML = rows.map(([k, t, c], i) => `<div><label><input type="checkbox" data-k="${k}" ${visible[k] ? 'checked' : ''} ${i === 1 ? 'hidden' : ''}>${c ? `<i style="background:rgba(${c.slice(0, 3)},${c[3] / 255})"></i>` : ''}${t}</label></div>`).join('');
+  L.innerHTML = rows.map(([k, t, c], i) => `<label${i === 1 ? ' style="padding-left:21px"' : ''}><input type="checkbox" data-k="${k}" ${visible[k] ? 'checked' : ''} ${i === 1 ? 'hidden' : ''}>${c ? `<i style="background:rgba(${c.slice(0, 3)},${c[3] / 255})"></i>` : ''}${t}</label>`).join('') +
+    `<div class="swipe"><label for="swipe" class="small">Radar: before ⟷ after</label><input type="range" id="swipe" min="0" max="100" value="${swipeAt}" aria-label="Swipe between the radar images before and after"></div>`;
+  $('swipe').addEventListener('input', e => onSwipe(+e.target.value));
   L.querySelectorAll('input').forEach(inp => inp.onchange = () => {
     visible[inp.dataset.k] = inp.checked;
     if (['flood', 'perm', 'before', 'steep'].includes(inp.dataset.k)) { clsCanvas = paintClasses(S.result.cls, S.result.grid); setImage('cls', clsCanvas); }
@@ -309,7 +343,7 @@ map.on('click', async e => {
   const { values: v } = await ask('inspect', { index: r * g.w + c });
   const dB = q => q == null ? '—' : `${fmt(q)} dB`.replace('-', '−');
   box.hidden = false;
-  box.innerHTML = `<div class="meta">Pixel ${c}, ${r} · ${fmt(e.lngLat.lat, 4)}°, ${fmt(e.lngLat.lng, 4)}°</div><dl>
+  box.innerHTML = `<button class="link" type="button" style="float:right;font-size:12px" onclick="this.parentElement.hidden=true">Close</button><div class="meta">Pixel ${c}, ${r} · ${fmt(e.lngLat.lat, 4)}°, ${fmt(e.lngLat.lng, 4)}°</div><dl>
     <dt>Class</dt><dd>${esc(CLASS_NAMES[v.cls])}</dd>
     <dt>VV before</dt><dd>${dB(v.preVV)}</dd><dt>VV after</dt><dd>${dB(v.postVV)}</dd>
     <dt>VV change</dt><dd>${v.preVV == null || v.postVV == null ? '—' : dB(v.postVV - v.preVV)}</dd>
@@ -323,14 +357,15 @@ map.on('click', async e => {
 // ---------------------------------------------------------------- numbers
 function renderFigures(r) {
   const s = r.summary, a = s.areaKm2, m = r.meta;
-  $('r-sub').textContent = `${m.pre.datetime.slice(0, 10)} → ${m.post.datetime.slice(0, 10)} · ${m.post.platform}, ${m.post.orbitState} orbit ${m.post.relativeOrbit} · ${m.resolutionM} m grid · threshold ${fmt(r.threshold.value)} dB (${r.threshold.source})`.replace(/-(\d)/g, '−$1');
+  const d = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  $('r-sub').textContent = `${d(m.pre.datetime)} to ${d(m.post.datetime)}. Threshold ${fmt(r.threshold.value)} dB.`.replace(/-(\d)/g, '−$1');
   const share = a.valid ? a.flood / a.valid * 100 : 0;
   $('figures').innerHTML = [
-    [fmt(a.flood, a.flood < 10 ? 2 : 1), 'km² of new water', `${fmt(share)}% of the ${fmt(a.valid, 0)} km² analysed`],
-    [fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), 'km² high confidence', m.post.polarisations === 'VV, VH' ? `VV and VH both darkened; ${fmt(a.floodMedium, 2)} km² medium (VV only)` : 'no VH in these images, so all flood is medium confidence'],
-    [fmtInt(s.population.inFlood), 'modelled residents in it', `GHS-POP 2025, ${fmtInt(s.population.inFloodHigh)} in high-confidence water${s.population.pixelsWithoutPopulation ? `; ${fmtInt(s.population.pixelsWithoutPopulation)} pixels had no population data` : ''}`],
-    [fmt(a.permanent, 1), 'km² permanent water', `excluded; ${fmt(a.waterBefore, 1)} km² was already water-like before`],
-  ].map(([v, u, d]) => `<div class="fig"><span class="v">${v}</span><span class="u">${u}</span><p class="d">${d}</p></div>`).join('');
+    [fmt(a.flood, a.flood < 10 ? 2 : 1), `km² new water (${fmt(share)}% of ${fmt(a.valid, 0)} km²)`],
+    [fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), m.post.polarisations === 'VV, VH' ? 'km² high confidence (VV and VH)' : 'km² high confidence (no VH)'],
+    [fmtInt(s.population.inFlood), 'modelled residents in it'],
+    [fmt(a.permanent, 1), 'km² permanent water, excluded'],
+  ].map(([v, u]) => `<div class="fig"><b class="num">${v}</b><span>${u}</span></div>`).join('');
 }
 function renderLandcover(r) {
   const e = Object.entries(r.summary.landcoverKm2), max = Math.max(...e.map(x => x[1]), 1e-9);
@@ -340,9 +375,9 @@ function renderLandcover(r) {
 function renderZones(r) {
   const z = r.summary.zones;
   if (!z || !z.length) { $('zones').innerHTML = S.zonesSource ? '<p class="small">No flood water inside the administrative areas found.</p>' : ''; return; }
-  $('zones').innerHTML = `<h3 class="meta">By administrative area</h3><table><thead><tr><th>Area</th><th style="text-align:right">Flooded km²</th><th style="text-align:right">Modelled residents</th></tr></thead><tbody>${
-    z.slice(0, 25).map(q => `<tr><td>${esc(q.name)}</td><td class="n2">${fmt(q.floodKm2, 2)}</td><td class="n2">${fmtInt(q.population)}</td></tr>`).join('')}</tbody></table>
-    <p class="small" style="margin-top:.5rem">Only the part of each area inside the analysed box is counted. ${esc(S.zonesSource || '')}${z.length > 25 ? ` · ${z.length - 25} more in the CSV` : ''}</p>`;
+  $('zones').innerHTML = `<table class="t"><thead><tr><th>Area</th><th style="text-align:right">Flooded km²</th><th style="text-align:right">Modelled residents</th></tr></thead><tbody>${
+    z.slice(0, 25).map(q => `<tr><td>${esc(q.name)}</td><td class="n">${fmt(q.floodKm2, 2)}</td><td class="n">${fmtInt(q.population)}</td></tr>`).join('')}</tbody></table>
+    <p class="note">Only the part of each area inside the analysed box is counted. ${esc(S.zonesSource || '')}${z.length > 25 ? ` · ${z.length - 25} more in the CSV` : ''}</p>`;
 }
 
 // histogram with a draggable threshold
@@ -434,14 +469,28 @@ async function printReport() {
 
 // ---------------------------------------------------------------- example
 $('demo').addEventListener('click', async () => {
-  document.getElementById('tool').scrollIntoView({ behavior: 'smooth' });
   const b = [6.70, 7.70, 6.85, 7.85];
   await setAoi(b, 'Lokoja, Kogi State, Nigeria: Niger–Benue confluence');
-  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, duration: 900 });
+  fitBox(b); go(1);
   $('d0').value = '2022-07-01'; $('d1').value = '2022-11-30';
   await listImages();
   const pre = S.acq.find(a => a.datetime.startsWith('2022-08-02')), post = S.acq.find(a => a.datetime.startsWith('2022-10-13'));
   if (!pre || !post) { logLine('The example images could not be found in the archive right now.', 'err'); return; }
   pick(pre); pick(post);
-  runNow();
+  go(2); runNow();
 });
+
+// ---------------------------------------------------------------- drawer and about
+$('more').addEventListener('click', () => {
+  const open = $('drawer-body').hidden; $('drawer-body').hidden = !open; $('more').setAttribute('aria-expanded', String(open)); $('more').textContent = open ? 'Hide' : 'Details';
+});
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+  document.querySelectorAll('[data-tabpane]').forEach(p => { p.hidden = p.dataset.tabpane !== b.dataset.tab; });
+}));
+$('ctl-toggle').addEventListener('click', () => { const o = $('mapctl').classList.toggle('open'); $('ctl-toggle').setAttribute('aria-expanded', String(o)); });
+$('about-open').addEventListener('click', () => { $('about').hidden = false; $('about-close').focus(); });
+$('about-close').addEventListener('click', () => { $('about').hidden = true; $('about-open').focus(); });
+$('about').addEventListener('click', e => { if (e.target === $('about')) $('about').hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('about').hidden = true; if (drawing) setDraw(false); } });
+go(0);

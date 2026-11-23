@@ -1,13 +1,13 @@
-run seconds 41.491
-log: Starting | Analysis grid: 833 × 835 pixels of 20 m in EPSG:32632 | Reading VV before (2022-08-02) | Reading VV after (2022-10-13) | Reading VH before | Reading VH after | Speckle filter: 3 × 3 focal mean of linear backscatter (after averaging to 20 m), then dB | Reading JRC Global Surface Water occurrence | Reading Copernicus DEM GLO-30 and computing slope | Reading ESA WorldCover 2021 | Reading GHS-POP 2025 population | Water threshold on VV after: -18.0 dB (default (automatic threshold not used: Otsu -12.6 dB outside -24 to -14 dB)) | Rasterising administrative areas | Done in 36.5 s
-figures: 22.4km² of new water8.2% of the 274 km² analysed || 19.4km² high confidenceVV and VH both darkened; 3.05 km² medium (VV only) || 4,987modelled residents in itGHS-POP 2025, 3,964 in high-confidence water || 20.9km² permanent waterexcluded; 13.3 km² was already water-like before
+run seconds 38.614
+log: Starting | Analysis grid: 833 × 835 pixels of 20 m in EPSG:32632 | Reading VV before (2022-08-02) | Reading VV after (2022-10-13) | Reading VH before | Reading VH after | Speckle filter: 3 × 3 focal mean of linear backscatter (after averaging to 20 m), then dB | Reading JRC Global Surface Water occurrence | Reading Copernicus DEM GLO-30 and computing slope | Reading ESA WorldCover 2021 | Reading GHS-POP 2025 population | Water threshold on VV after: -18.0 dB (default (automatic threshold not used: Otsu -12.6 dB outside -24 to -14 dB)) | Rasterising administrative areas | Done in 33.2 s
+figures: 22.4km² new water (8.2% of 274 km²) || 19.4km² high confidence (VV and VH) || 4,987modelled residents in it || 20.9km² permanent water, excluded
 zones rows: 4
-export geojson 765432 bytes tests/out/floodscope_2022-10-13_flood-extent.geojson
-export geotiff 696555 bytes tests/out/floodscope_2022-10-13_flood-classes.tif
-export csv 1983 bytes tests/out/floodscope_2022-10-13_flood-statistics.csv
-export json 3789 bytes tests/out/floodscope_2022-10-13_processing-metadata.json
-export png 381891 bytes tests/out/floodscope_2022-10-13_map.png
+export geojson 765433 bytes ../fs/floodscope_2022-10-13_flood-extent.geojson
+export geotiff 696555 bytes ../fs/floodscope_2022-10-13_flood-classes.tif
+export csv 1983 bytes ../fs/floodscope_2022-10-13_flood-statistics.csv
+export json 3790 bytes ../fs/floodscope_2022-10-13_processing-metadata.json
+export png 432256 bytes ../fs/floodscope_2022-10-13_map.png
 figures at -20 dB: 9.62 | 7.83 | 1,056 | 20.9
-inspect: Pixel 416, 417 · 7.7749°, 6.7749° Classdry VV before−7.6 dBVV after−6.8 dB VV change0.8 dB VH change1.2 dB Water occurrence0% Slope1.5° Land coverCropland Residents586 /km²
+inspect: ClosePixel 222, 451 · 7.7687°, 6.7398° Classdry VV before−7.0 dBVV after−6.2 dB VV change0.8 dB VH change−0.4 dB Water occurrence0% Slope4.5° Land coverBuilt-up Residents15,029 /km²
 horizontal overflow at 390 px: 0
 console errors: none

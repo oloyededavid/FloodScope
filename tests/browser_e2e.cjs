@@ -8,7 +8,7 @@ const fs = require('fs');
   const errors = [];
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
-  await page.goto('http://127.0.0.1:8765/index.html', { waitUntil: 'load' });
+  await page.goto(`http://127.0.0.1:${process.env.PORT || 8765}/index.html`, { waitUntil: 'load' });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${out}/fs_landing.png` });
   const t0 = Date.now();
@@ -19,23 +19,19 @@ const fs = require('fs');
   console.log('log:', await page.$$eval('#log li', ls => ls.map(l => l.textContent).join(' | ')));
   console.log('figures:', await page.$$eval('.fig', fs => fs.map(f => f.textContent.replace(/\s+/g, ' ').trim()).join(' || ')));
   console.log('zones rows:', await page.$$eval('#zones tbody tr', rs => rs.length));
-  await page.evaluate(() => document.getElementById('tool').scrollIntoView());
-  await page.waitForTimeout(1500);
   await page.screenshot({ path: `${out}/fs_tool.png` });
-  await page.evaluate(() => document.getElementById('results').scrollIntoView());
-  await page.waitForTimeout(800);
+  await page.click('#more'); await page.waitForTimeout(800);
   await page.screenshot({ path: `${out}/fs_results.png`, fullPage: false });
+  for (const t of ['lc', 'zones']) { await page.click(`.tabs [data-tab="${t}"]`); await page.waitForTimeout(500); await page.screenshot({ path: `${out}/fs_${t}.png` }); }
+  await page.click('.tabs [data-tab="thr"]'); await page.click('#more');
   for (const k of ['geojson', 'geotiff', 'csv', 'json', 'png']) {
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click(`[data-export="${k}"]`)]);
     const p = `${out}/${dl.suggestedFilename()}`; await dl.saveAs(p); console.log('export', k, fs.statSync(p).size, 'bytes', p);
   }
   // threshold change via the slider after the run
-  await page.evaluate(() => { const s = document.getElementById('p-thr'); s.value = -20; s.dispatchEvent(new Event('input')); });
+  await page.evaluate(() => { const s = document.getElementById('p-thr'); s.value = -20; s.dispatchEvent(new Event('input')); });  // the slider sits in the closed Settings panel
   await page.waitForTimeout(2500);
-  console.log('figures at -20 dB:', await page.$$eval('.fig .v', fs => fs.map(f => f.textContent).join(' | ')));
-  // click a pixel in the map centre
-  await page.evaluate(() => document.getElementById('tool').scrollIntoView());
-  await page.waitForTimeout(800);
+  console.log('figures at -20 dB:', await page.$$eval('.fig b', fs => fs.map(f => f.textContent).join(' | ')));
   const box = await page.$('#map').then(e => e.boundingBox());
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 1);
   await page.waitForTimeout(1200);
@@ -46,7 +42,7 @@ const fs = require('fs');
   await page.waitForTimeout(800);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   console.log('horizontal overflow at 390 px:', overflow);
-  await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `${out}/fs_phone.png`, fullPage: false });
+  await page.screenshot({ path: `${out}/fs_phone.png`, fullPage: false });
   console.log('console errors:', errors.length ? errors : 'none');
   await browser.close();
 })().catch(e => { console.error('FAILED', e); process.exit(1); });
