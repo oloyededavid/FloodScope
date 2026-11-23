@@ -11,3 +11,5 @@
 .legend .swipe { border-top: 1px solid var(--rule); margin-top: 6px; padding-top: 6px; display: grid; gap: 2px; }
 #search .in { flex: 1 1 0; width: auto; min-width: 0; }
 #search .rb { flex: 0 0 auto; }
+#hist { touch-action: none; }
+.tick.other { opacity: .55; }

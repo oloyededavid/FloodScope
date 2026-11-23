@@ -64,7 +64,7 @@ async function setAoi(b, label) {
   $('aoi-info').hidden = false;
   $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${ok ? '' : ' warn'}">${fmt(a, 0)} km²</span>${ok ? '' : `<span class="warn">${a > LIMIT_KM2 ? 'Larger than 3,600 km²; draw a smaller box' : 'Too small'}</span>`}`;
   summary(0, `${label || 'Area'}, ${fmt(a, 0)} km²`); summary(1, 'Before and after the flood');
-  searchSeq++; S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun();
+  searchSeq++; S.acq = []; S.pre = S.post = null; if (!running && S.result) clearResult(); renderTimeline(); updateRun();
   if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', '<span class="warn">Outside 56° S to 78° N, where the permanent-water layer exists</span>');
   return ok;
 }
@@ -151,19 +151,21 @@ function renderTimeline() {
       b.textContent = a.datetime.slice(0, 10); b.title = `${a.platform}, ${a.datetime.replace('T', ' ').slice(0, 16)} UTC, ${trackKey(a)}`;
       if (S.pre && S.pre.id === a.id) b.dataset.role = 'pre';
       if (S.post && S.post.id === a.id) b.dataset.role = 'post';
-      if (S.pre && !S.post && (trackKey(a) !== trackKey(S.pre) || a.datetime <= S.pre.datetime)) b.disabled = true;
+      if (S.pre && !S.post && (trackKey(a) !== trackKey(S.pre) || a.datetime <= S.pre.datetime)) b.classList.add('other');
       b.onclick = () => pick(a);
       t.append(b);
     }
     box.append(t); el.append(box);
   }
-  $('pick-info').innerHTML = !S.pre ? 'Choose the <strong>before</strong> image.' : !S.post ? `Before: ${S.pre.datetime.slice(0, 10)}. Now choose the <strong>after</strong> image on the same track.`
+  $('pick-info').innerHTML = !S.pre ? 'Choose the <strong>before</strong> image.' : !S.post ? `Before: ${S.pre.datetime.slice(0, 10)}. Now choose the <strong>after</strong> image on the same track, or another date to change the before image.`
     : `Before ${S.pre.datetime.slice(0, 10)}, after ${S.post.datetime.slice(0, 10)}: ${Math.round((Date.parse(S.post.datetime) - Date.parse(S.pre.datetime)) / 864e5)} days apart. Click a date to start again.`;
   summary(1, S.pre && S.post ? `${S.pre.datetime.slice(0, 10)} to ${S.post.datetime.slice(0, 10)}` : S.pre ? `Before ${S.pre.datetime.slice(0, 10)}; choose after` : 'Before and after the flood');
 }
 function pick(a) {
-  if (!S.pre || S.post) { S.pre = a; S.post = null; }
-  else if (trackKey(a) === trackKey(S.pre) && a.datetime > S.pre.datetime) S.post = a;
+  // a later date on the same track completes the pair; any other date starts a new "before"
+  if (S.pre && !S.post && trackKey(a) === trackKey(S.pre) && a.datetime > S.pre.datetime) S.post = a;
+  else { S.pre = a; S.post = null; }
+  if (!running && S.result) clearResult();
   renderTimeline(); updateRun();
 }
 function updateRun() {
@@ -181,7 +183,7 @@ const complete = k => k === 0 ? !!(S.aoi && S.aoi.ok) : k === 1 ? !!(S.pre && S.
 function setLocks() {
   document.querySelectorAll('.step').forEach(el => {
     const k = +el.dataset.step;
-    el.classList.toggle('locked', !reach(k));
+    el.classList.toggle('locked', !reach(k)); el.querySelector('.step-h').setAttribute('aria-disabled', String(!reach(k))); el.querySelector('.step-h').tabIndex = reach(k) ? 0 : -1;
     el.classList.toggle('done', k !== step && complete(k));
   });
 }
@@ -222,14 +224,15 @@ $('run').addEventListener('click', runNow);
 let running = false;
 async function runNow() {
   if (running || !S.aoi || !S.pre || !S.post) return;
-  running = true; clearTimeout(rcTimer);
+  const aoi = S.aoi, pre = S.pre, post = S.post;   // fixed for this run, even if the inputs change while it runs
+  running = true; clearTimeout(rcTimer); rcSeq++; clearResult();
   $('run').disabled = true; $('demo').disabled = true; log.innerHTML = '';
   S.result = null; $('inspect').hidden = true; $('figures').classList.add('empty'); summary(2, 'Running');
   logLine('Starting', 'now');
   let zones = null;
-  if ($('p-zones').checked) zones = await loadZones(S.aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
+  if ($('p-zones').checked) zones = await loadZones(aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
   try {
-    const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [S.aoi.ring] }, pre: S.pre, post: S.post, params: P(), base: BASE, zones, label: S.aoi.label } },
+    const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [aoi.ring] }, pre, post, params: P(), base: BASE, zones, label: aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
     log.querySelectorAll('li.now').forEach(li => li.classList.remove('now'));
     S.result = r; S.zonesSource = zones ? zones.source : null; $('bar').style.width = '100%';
@@ -239,14 +242,15 @@ async function runNow() {
   finally { running = false; $('demo').disabled = false; updateRun(); }
 }
 
-let rcTimer = null;
+let rcTimer = null, rcSeq = 0;
 function scheduleReclassify(extra) {
   clearTimeout(rcTimer);
   if (running) return;
   rcTimer = setTimeout(async () => {
     if (running || !S.result) return;
     const p = P(), params = { changeDb: p.changeDb, slopeMax: p.slopeMax, permanentOccurrence: p.permanentOccurrence, ...extra };
-    try { const r = await ask('reclassify', { params }); S.result = r; await drawResult(r, false); } catch (e) { logLine(e.message, 'err'); }
+    const mine = ++rcSeq;
+    try { const r = await ask('reclassify', { params }); if (mine !== rcSeq || running) return; S.result = r; await drawResult(r, false); } catch (e) { logLine(e.message, 'err'); }
   }, 60);
 }
 
@@ -290,6 +294,7 @@ async function drawResult(r, fit) {
   radarCanvas = radarCanvas && radarCanvas.width === g.w && !fit ? radarCanvas : document.createElement('canvas');
   radarCanvas.width = g.w; radarCanvas.height = g.h; paintRadar(r);
   setImage('cls', clsCanvas); setImage('radar', radarCanvas, 'cls');
+  if (map.getLayer('cls')) map.setLayoutProperty('cls', 'visibility', 'visible');
   applyVisibility();
   if (fit) {
     const lons = corners.map(c => c[0]), lats = corners.map(c => c[1]);
@@ -297,7 +302,7 @@ async function drawResult(r, fit) {
   }
   renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r);
   $('thr-empty').hidden = true;
-  if (fit) showTab('thr');
+  if (fit) { showTab('thr'); if (window.innerWidth <= 860) document.querySelector('.main').scrollIntoView({ behavior: 'smooth' }); }
 }
 function paintClasses(cls, g) {
   const c = document.createElement('canvas'); c.width = g.w; c.height = g.h;
@@ -431,18 +436,23 @@ const hDb = ev => { const b = H.getBoundingClientRect(), pad = JSON.parse(H.data
 H.addEventListener('pointerdown', ev => { if (!S.result) return; dragH = true; H.setPointerCapture(ev.pointerId); move(ev); });
 H.addEventListener('pointermove', ev => dragH && move(ev));
 H.addEventListener('pointerup', () => { dragH = false; });
-function move(ev) {
-  const t = Math.round(hDb(ev) * 10) / 10;
-  $('p-thr').value = t; $('o-thr').textContent = `${fmt(t)} dB`.replace('-', '−');
-  S.result.threshold.value = t; drawHist(S.result);
-  scheduleReclassify({ threshold: t });
-}
+H.addEventListener('pointercancel', () => { dragH = false; });
+H.addEventListener('lostpointercapture', () => { dragH = false; });
+function move(ev) { setThreshold(hDb(ev)); }
 H.tabIndex = 0;
+H.setAttribute('role', 'slider'); H.setAttribute('aria-label', 'Water threshold, VV after the event, in dB'); H.setAttribute('aria-valuemin', '-26'); H.setAttribute('aria-valuemax', '-12');
+function setThreshold(t) {
+  t = Math.max(-26, Math.min(-12, Math.round(t * 10) / 10));
+  $('p-thr').value = t; $('o-thr').textContent = `${fmt(t)} dB`.replace('-', '−');
+  H.setAttribute('aria-valuenow', String(t)); H.setAttribute('aria-valuetext', `${fmt(t)} dB`.replace('-', '−'));
+  S.result.threshold.value = t; drawHist(S.result); scheduleReclassify({ threshold: t });
+}
 H.addEventListener('keydown', ev => {
-  if (!S.result || !['ArrowLeft', 'ArrowRight'].includes(ev.key)) return;
-  ev.preventDefault();
-  const t = Math.max(-26, Math.min(-12, Math.round((S.result.threshold.value + (ev.key === 'ArrowRight' ? 0.1 : -0.1)) * 10) / 10));
-  $('p-thr').value = t; S.result.threshold.value = t; drawHist(S.result); scheduleReclassify({ threshold: t });
+  if (!S.result) return;
+  const t = S.result.threshold.value;
+  const next = { ArrowLeft: t - 0.1, ArrowDown: t - 0.1, ArrowRight: t + 0.1, ArrowUp: t + 0.1, PageDown: t - 1, PageUp: t + 1, Home: -26, End: -12 }[ev.key];
+  if (next === undefined) return;
+  ev.preventDefault(); setThreshold(next);
 });
 
 // ---------------------------------------------------------------- exports
@@ -460,10 +470,10 @@ document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('clic
 function save(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 async function mapPng() {
   await new Promise(r => { map.once('render', r); map.triggerRepaint(); });
-  const src = map.getCanvas(), c = document.createElement('canvas'), foot = 54;
+  const src = map.getCanvas(), c = document.createElement('canvas'), dpr = window.devicePixelRatio || 1, foot = 50 * dpr;
   c.width = src.width; c.height = src.height + foot;
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(src, 0, 0);
-  const m = S.result.meta, dpr = window.devicePixelRatio || 1;
+  const m = S.result.meta;
   ctx.fillStyle = '#141412'; ctx.font = `${13 * dpr}px Satoshi, sans-serif`;
   ctx.fillText(`FloodScope · flood ${m.pre.datetime.slice(0, 10)} → ${m.post.datetime.slice(0, 10)} · ${fmt(S.result.summary.areaKm2.flood, 2)} km² new water`, 10 * dpr, src.height + 20 * dpr);
   ctx.fillStyle = '#55544e'; ctx.font = `${10 * dpr}px Satoshi, sans-serif`;
@@ -508,13 +518,37 @@ $('demo').addEventListener('click', async () => {
   go(2); runNow();
 });
 
+// the previous result is removed from the map, figures and tabs when a new run starts or the inputs change
+const EMPTY_KPI = $('figures').innerHTML;
+function clearResult() {
+  S.result = null;
+  ['cls', 'radar'].forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none'); });
+  $('legend').hidden = true; $('inspect').hidden = true;
+  $('figures').classList.add('empty'); $('figures').innerHTML = EMPTY_KPI;
+  $('thr-empty').hidden = false; hctx.setTransform(1, 0, 0, 1, 0, 0); hctx.clearRect(0, 0, H.width, H.height);
+  $('lc').innerHTML = '<p class="empty-state">Map a flood to see its land cover.</p>';
+  $('zones').innerHTML = '<p class="empty-state">Map a flood to see the areas it covers.</p>';
+  $('r-title').textContent = 'Flood extent from Sentinel-1 radar';
+  $('r-sub').textContent = 'Where open water appeared between two radar images, and who lived there.';
+  summary(2, 'Rules and run');
+}
+
 // ---------------------------------------------------------------- tabs, downloads menu, about
 function showTab(t) {
-  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', String(x.dataset.tab === t)));
+  document.querySelectorAll('.tabs button').forEach(x => { x.setAttribute('aria-selected', String(x.dataset.tab === t)); x.tabIndex = x.dataset.tab === t ? 0 : -1; });
   document.querySelectorAll('[data-tabpane]').forEach(p => { p.hidden = p.dataset.tabpane !== t; });
   if (t === 'thr' && S.result) drawHist(S.result);
 }
-document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+const tabBtns = [...document.querySelectorAll('.tabs button')];
+tabBtns.forEach(b => {
+  const pane = document.querySelector(`[data-tabpane="${b.dataset.tab}"]`);
+  b.id = `tab-${b.dataset.tab}`; pane.id = `pane-${b.dataset.tab}`; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', b.id); b.setAttribute('aria-controls', pane.id);
+  b.addEventListener('click', () => showTab(b.dataset.tab));
+  b.addEventListener('keydown', e => {
+    const i = tabBtns.indexOf(b), j = e.key === 'ArrowRight' ? (i + 1) % tabBtns.length : e.key === 'ArrowLeft' ? (i - 1 + tabBtns.length) % tabBtns.length : -1;
+    if (j < 0) return; e.preventDefault(); tabBtns[j].focus(); showTab(tabBtns[j].dataset.tab);
+  });
+});
 $('dl-menu').addEventListener('toggle', () => { if ($('dl-menu').open && !S.result) { $('dl-menu').open = false; $('r-sub').textContent = 'Map a flood first; downloads are made from the result.'; } });
 document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => { $('dl-menu').open = false; }));
 document.addEventListener('click', e => { if ($('dl-menu').open && !$('dl-menu').contains(e.target)) $('dl-menu').open = false; });
