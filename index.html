@@ -6,15 +6,27 @@
 <title>FloodScope</title>
 <meta name="description" content="Map where flood water appeared between two Sentinel-1 radar images, anywhere between 56° S and 78° N, and estimate the people and land cover inside it. Runs in your browser on open data.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="FloodScope">
+<meta property="og:description" content="Map where flood water appeared between two Sentinel-1 radar images, anywhere between 56° S and 78° N, and estimate the people and land cover inside it. Runs in your browser on open data.">
+<meta property="og:image" content="https://oloyededavid.github.io/geospatial-rs-portfolio/assets/tools/floodscope-1200.webp">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="900">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="stylesheet" href="vendor/maplibre-gl.css">
 <link rel="stylesheet" href="css/dash.css">
 <link rel="stylesheet" href="css/floodscope.css">
 <script src="vendor/maplibre-gl.js"></script>
 </head>
 <body>
+<header class="topbar">
+  <a class="back" href="https://oloyededavid.github.io/geospatial-rs-portfolio/#studies"><span aria-hidden="true">&larr;</span> Back to portfolio</a>
+  <span class="tb-title">FloodScope</span>
+  <span class="ver">v<span data-ver></span></span>
+  <button class="hb" id="about-open" type="button" aria-haspopup="dialog">About and method</button>
+</header>
 <div class="app">
   <aside class="rail" aria-label="Analysis steps">
-    <a class="brand" href="./"><i></i><b>FloodScope</b></a>
     <div class="steps">
       <section class="step open" data-step="0">
         <button class="step-h" type="button" aria-expanded="true"><span class="n">1</span><span class="t">Area</span><span class="s" id="sum-0">Search a place or draw a box</span></button>
@@ -78,15 +90,15 @@
       <details class="menu" id="dl-menu">
         <summary class="hb" id="dl-btn">Download</summary>
         <div class="menu-list">
-          <button type="button" data-export="geojson">Flood extent<span>GeoJSON polygons</span></button>
-          <button type="button" data-export="geotiff">Class grid<span>GeoTIFF, UTM</span></button>
-          <button type="button" data-export="csv">Statistics<span>CSV</span></button>
-          <button type="button" data-export="json">Processing record<span>JSON</span></button>
-          <button type="button" data-export="png">Map image<span>PNG</span></button>
-          <button type="button" data-export="pdf">Report<span>Print or save as PDF</span></button>
+          <p class="menu-note" id="dl-note">Downloads are available once a result exists.</p>
+          <button type="button" disabled data-export="geojson">Flood extent<span>GeoJSON polygons</span></button>
+          <button type="button" disabled data-export="geotiff">Class grid<span>GeoTIFF, UTM</span></button>
+          <button type="button" disabled data-export="csv">Statistics<span>CSV</span></button>
+          <button type="button" disabled data-export="json">Processing record<span>JSON</span></button>
+          <button type="button" disabled data-export="png">Map image<span>PNG</span></button>
+          <button type="button" disabled data-export="pdf">Report<span>Print or save as PDF</span></button>
         </div>
       </details>
-      <button class="hb" id="about-open" type="button">About</button>
     </header>
 
     <section class="kpis empty" id="figures" aria-label="Key figures">
@@ -98,8 +110,9 @@
 
     <div class="body">
       <div class="mapwrap">
-        <div id="map" role="region" aria-label="Map"></div>
-        <div class="legend" id="legend" hidden></div>
+        <div id="map" role="region" aria-label="Flood map"></div>
+        <p class="mapnote" id="mapnote" role="status" hidden>The basemap could not be loaded. The analysis still works; only the background map is missing.</p>
+        <details class="legend" id="legend" hidden open><summary>Legend</summary><div id="legend-body"></div></details>
         <div class="card" id="inspect" hidden aria-live="polite"></div>
       </div>
 
@@ -168,7 +181,7 @@
       <li>There is no ground truth here. For the Lokoja example the result is compared with an independent satellite product (UNOSAT); agreement is not accuracy.</li>
       <li>Areas are ground areas, corrected for the UTM scale factor at each pixel's easting.</li>
     </ul>
-    <p class="small">FloodScope v<span id="ver">1.0.0</span>. Full methodology and tests in the <a href="https://github.com/oloyededavid/FloodScope">repository</a>. Code MIT; data under their own licences.</p>
+    <p class="small">FloodScope v<span data-ver></span>. Full methodology and tests in the <a href="https://github.com/oloyededavid/FloodScope">repository</a>. Code MIT; data under their own licences.</p>
   </article>
 </div>
 
