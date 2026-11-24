@@ -600,4 +600,6 @@ $('about').addEventListener('keydown', e => {   // keep Tab inside the open dial
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('about').hidden) aboutClose(); $('dl-menu').open = false; if (drawing) setDraw(false); } });
+// new dates make the last search out of date: the next visit to step 2 or List images searches again
+['d0', 'd1'].forEach(id => $(id).addEventListener('change', () => { S.searched = null; if (!S.acq.length) renderTimeline(); }));
 renderTimeline(); go(0); syncExports();

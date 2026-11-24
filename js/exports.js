@@ -111,7 +111,8 @@ const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 
 /** Summary statistics as CSV: one block per table, each with a header row. */
 export function summaryCsv(summary, meta, params) {
-  const a = summary.areaKm2, p = summary.population;
+  const a = summary.areaKm2, none = summary.validPixels > 0 && summary.population.pixelsWithoutPopulation >= summary.validPixels;
+  const p = none ? { ...summary.population, inFlood: '', inFloodHigh: '', inValidArea: '', inAoi: '' } : summary.population;
   const rows = [['section', 'item', 'value', 'unit'],
     ['run', 'before', meta.pre.datetime, 'UTC'], ['run', 'after', meta.post.datetime, 'UTC'],
     ['run', 'relative orbit', meta.post.relativeOrbit, ''], ['run', 'grid resolution', meta.resolutionM, 'm'], ['run', 'CRS', meta.crs, ''],
@@ -122,7 +123,8 @@ export function summaryCsv(summary, meta, params) {
     ['area', 'excluded for slope', a.steep, 'km2'],
     ['population', 'modelled residents in flood', p.inFlood, 'persons (GHS-POP 2025)'], ['population', 'of which high-confidence flood', p.inFloodHigh, 'persons'],
     ['population', 'modelled residents in analysed area', p.inValidArea, 'persons'], ['population', 'modelled residents in the drawn area', p.inAoi, 'persons'],
-    ['population', 'analysed pixels without population data', p.pixelsWithoutPopulation, 'pixels'], ['run', 'area basis', 'ground area: UTM pixel area / k^2 per column', '']];
+    ['population', 'analysed pixels without population data', p.pixelsWithoutPopulation, 'pixels'],
+    ...(meta.populationNote ? [['population', 'note', meta.populationNote, '']] : []), ['run', 'area basis', 'ground area: UTM pixel area / k^2 per column', '']];
   for (const [k, v] of Object.entries(summary.landcoverKm2)) rows.push(['flooded land cover', WORLDCOVER[k] || k, v, 'km2']);
   for (const z of summary.zones || []) rows.push(['administrative area', z.name, z.floodKm2, 'km2 flooded'], ['administrative area', z.name, z.population, 'persons in flood']);
   return csv(rows);
