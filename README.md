@@ -41,7 +41,7 @@ Results are in [docs/test-report.md](docs/test-report.md).
 
 | Path | What |
 |---|---|
-| `index.html`, `css/app.css` | Page |
+| `index.html`, `css/dash.css` (shared with GeoValidate and AgroSignal), `css/floodscope.css` | Page |
 | `js/app.js` | Interface: map, steps, results, exports |
 | `js/worker.js` | Web Worker that holds the arrays of the current run |
 | `js/pipeline.js` | The analysis: acquisitions, reading, classification, summaries |
