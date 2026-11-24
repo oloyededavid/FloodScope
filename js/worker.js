@@ -9,7 +9,7 @@ const send = (type, data, transfer) => self.postMessage({ type, ...data }, trans
 self.onmessage = async ({ data: m }) => {
   try {
     if (m.cmd === 'acquisitions') {
-      const { list, truncated } = await listAcquisitions(m.bbox, m.start, m.end);
+      const { list, truncated } = await listAcquisitions(m.bbox, m.start, m.end);   // each request has its own time limit (io.pcFetch)
       send('acquisitions', { id: m.id, list, truncated });
     } else if (m.cmd === 'run') {
       if (controller) controller.abort();

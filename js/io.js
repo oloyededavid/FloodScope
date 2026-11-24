@@ -19,14 +19,30 @@ export const project = (from, to, pts) => {
 };
 
 // ---------------------------------------------------------------- STAC
+/** fetch() with a time limit and plain-language failures. `signal` is the caller's (user cancel); a timeout or a network failure
+    becomes an Error that names the service, never a bare "Failed to fetch". */
+export async function pcFetch(url, init = {}, { signal, timeoutMs = 30000, what = 'the Microsoft Planetary Computer' } = {}) {
+  const c = new AbortController(); let timedOut = false;
+  const t = setTimeout(() => { timedOut = true; c.abort(); }, timeoutMs);
+  const onAbort = () => c.abort();
+  if (signal) { if (signal.aborted) c.abort(); else signal.addEventListener('abort', onAbort, { once: true }); }
+  try {
+    return await fetch(url, { ...init, signal: c.signal });
+  } catch (e) {
+    if (timedOut) throw new Error(`${what[0].toUpperCase()}${what.slice(1)} did not answer within ${Math.round(timeoutMs / 1000)} seconds. It may be down or busy; try again in a few minutes.`);
+    if (signal && signal.aborted) throw e;
+    throw new Error(`Could not reach ${what}. Check your internet connection, or try again later.`);
+  } finally { clearTimeout(t); if (signal) signal.removeEventListener('abort', onAbort); }
+}
+
 export async function stacSearch(body, { signal, maxItems = 500 } = {}) {
   const items = [];
   let req = { url: `${PC}/stac/v1/search`, body: { limit: 100, ...body } };
   while (req && items.length < maxItems) {
-    const r = await fetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body), signal });
-    if (!r.ok) throw new Error(`STAC search failed (${r.status})`);
-    const j = await r.json();
-    items.push(...j.features);
+    const r = await pcFetch(req.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) }, { signal });
+    if (!r.ok) throw new Error(r.status >= 500 ? `The Microsoft Planetary Computer archive search is not working at the moment (error ${r.status}). Try again later.` : `The archive search was refused (error ${r.status}).`);
+    let j; try { j = await r.json(); } catch { throw new Error('The archive search returned an unreadable answer. Try again later.'); }
+    items.push(...(j.features || []));
     const next = (j.links || []).find(l => l.rel === 'next');
     req = next && next.body ? { url: next.href, body: next.body } : null;
   }
@@ -38,7 +54,7 @@ const tokens = new Map();
 export async function signedHref(href, collection, signal) {
   let t = tokens.get(collection);
   if (!t || Date.parse(t.expiry) - Date.now() < 5 * 60e3) {
-    const r = await fetch(`${PC}/sas/v1/token/${collection}`, { signal });
+    const r = await pcFetch(`${PC}/sas/v1/token/${collection}`, {}, { signal });
     if (!r.ok) throw new Error(`Could not get a read token for ${collection} (${r.status})`);
     const j = await r.json(); t = { token: j.token, expiry: j['msft:expiry'] }; tokens.set(collection, t);
   }

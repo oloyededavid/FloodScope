@@ -3,7 +3,8 @@
 import { stacSearch, signedHref, readToGrid, readMosaic, defineEpsg, project } from './io.js';
 import { DEFAULTS, focalMean, toDb, otsu, slopeDeg, classify, summarise, cellAreaKm2, utmScale, makeGrid, resolutionFor, rasterisePolygons, CLS } from './engine.js';
 
-export const VERSION = '1.0.0';
+import { VERSION } from './version.js';
+export { VERSION };
 
 /** Sentinel-1 RTC acquisitions over a lon/lat bbox. Slices of one datatake (same day, platform, relative orbit and pass)
     are merged into one acquisition, so an area that straddles two slices is read from both. Scenes without VV (HH/HV over
@@ -93,6 +94,11 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
   const db = {};
   for (const k of Object.keys(lin)) db[k] = lin[k] ? toDb(focalMean(lin[k], grid.w, grid.h, p.speckleWindow)) : null;
   for (const k of Object.keys(db)) if (db[k]) for (let i = 0; i < grid.n; i++) if (inAoi[i] < 0) db[k][i] = NaN;
+  // scenes whose edge or a data gap lies on the area carry no values there: stop early with a clear message
+  let nAoi = 0, nBoth = 0;
+  for (let i = 0; i < grid.n; i++) if (inAoi[i] >= 0) { nAoi++; if (db.preVV[i] === db.preVV[i] && db.postVV[i] === db.postVV[i]) nBoth++; }
+  if (!nBoth) throw new Error('The two images have no valid radar values over this area (the area lies outside the scene or in a data gap). Choose other images or move the box.');
+  if (nBoth < 0.5 * nAoi) step(`Only ${(100 * nBoth / nAoi).toFixed(0)}% of the area is covered by both images; the rest is treated as no data`);
 
   // permanent water
   step('Reading JRC Global Surface Water occurrence');
@@ -113,7 +119,18 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
 
   // population density (persons per km2) from GHS-POP counts per 30" cell
   step('Reading GHS-POP 2025 population');
-  const counts = await readMosaic(await popUrls(base, bbox), grid, { method: 'nearest', signal });
+  // population is context, not part of the flood map: if its tiles cannot be read the run continues without residents
+  let counts, populationNote = null;
+  try {
+    const urls = await popUrls(base, bbox);
+    if (!urls.length) populationNote = 'No GHS-POP tile covers this area, so modelled residents are not available.';
+    counts = await readMosaic(urls, grid, { method: 'nearest', signal });
+  } catch (e) {
+    if (e.name === 'AbortError' || (signal && signal.aborted)) throw e;
+    populationNote = `Population data could not be read (${e.message}), so modelled residents are not available.`;
+    counts = new Float32Array(grid.n).fill(NaN);
+  }
+  if (populationNote) step(populationNote);
   const popDensity = new Float32Array(grid.n).fill(NaN);
   const centres = [];
   for (let y = 0; y < grid.h; y += 32) centres.push([grid.x0 + grid.w * res / 2, grid.y1 - (y + 0.5) * res]);
@@ -172,6 +189,7 @@ export async function runAnalysis({ aoi, pre, post, params = {}, base, zones = n
     params: { ...p, threshold },
     meta: {
       app: 'FloodScope', version: VERSION, runAt: new Date().toISOString(), label: label || null, aoi, aoiAreaKm2: area, resolutionM: res,
+      populationNote,
       areas: 'ground areas: UTM pixel area corrected by the point scale factor at each column',
       crs: `EPSG:${crs}`, pre: strip(pre), post: strip(post), log,
       sources: {

@@ -2,8 +2,10 @@
 import { proj4 } from '../vendor/geo-libs.mjs';
 import { defineEpsg } from './io.js';
 import { CLASS_NAMES, WORLDCOVER } from './exports.js';
+import { VERSION } from './version.js';
 
 const $ = id => document.getElementById(id);
+document.querySelectorAll('[data-ver]').forEach(e => { e.textContent = VERSION; });
 const BASE = new URL('..', import.meta.url).href.replace(/\/$/, '');
 const fmt = (v, d = 1) => v == null || !(v === v) ? '—' : new Intl.NumberFormat('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d }).format(v);
 const fmtInt = v => v == null || !(v === v) ? '—' : new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 }).format(Math.round(v));
@@ -21,6 +23,10 @@ worker.onmessage = ({ data }) => {
   pending.delete(data.id);
   data.type === 'error' ? p.reject(new Error(data.message)) : p.resolve(data);
 };
+worker.onerror = e => {   // the worker script itself failed to load or crashed: fail every waiting request with a message
+  const err = new Error(`The analysis engine stopped (${e.message || 'script error'}). Reload the page and try again.`);
+  for (const [id, p] of pending) { pending.delete(id); p.reject(err); }
+};
 const ask = (cmd, payload = {}, onProgress) => new Promise((resolve, reject) => {
   const id = ++seq; pending.set(id, { resolve, reject, onProgress }); worker.postMessage({ cmd, id, ...payload });
 });
@@ -34,6 +40,11 @@ map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-rig
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
 const ready = new Promise(r => map.on('load', r));
+// if the basemap style cannot be fetched (host down, blocked network) fall back to a plain background so the tool still works
+const FALLBACK_STYLE = { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e9ecef' } }] };
+let styleFallback = false;
+map.on('error', e => { if (styleFallback || map.isStyleLoaded() || (e && e.sourceId)) return; styleFallback = true; $('mapnote').hidden = false; map.setStyle(FALLBACK_STYLE); });
+function showLegend() { const L = $('legend'); L.hidden = false; if (!L.dataset.init) { L.dataset.init = '1'; L.open = !window.matchMedia('(max-width: 860px)').matches; } return $('legend-body'); }
 ready.then(() => {
   map.addSource('s2', { type: 'raster', tileSize: 256, maxzoom: 15, attribution: 'Sentinel-2 cloudless 2024 by <a href="https://s2maps.eu">EOX IT Services GmbH</a> (contains modified Copernicus Sentinel data 2024)',
     tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/GoogleMapsCompatible/{z}/{y}/{x}.jpg'] });
@@ -54,19 +65,21 @@ function areaKm2(b) { // spherical rectangle
 async function setAoi(b, label) {
   const shift = Math.round(((b[0] + b[2]) / 2) / 360) * 360;   // the map repeats the world sideways
   b = [b[0] - shift, b[1], b[2] - shift, b[3]];
+  const crosses = b[0] < -180 || b[2] > 180;   // a box over the 180° meridian cannot be one UTM grid
   b = [Math.max(-180, b[0]), Math.max(-85, b[1]), Math.min(180, b[2]), Math.min(85, b[3])];
-  const a = areaKm2(b);
-  S.aoi = { bbox: b, ring: ringOf(b), area: a, label };
+  const a = areaKm2(b), outside = b[1] < -56 || b[3] > 78;
+  const problem = crosses ? 'The box crosses the 180° meridian; draw it on one side'
+    : a > LIMIT_KM2 ? `${fmt(a, 0)} km² is larger than the ${fmt(LIMIT_KM2, 0)} km² limit; draw a smaller box`
+    : a < 0.5 ? `${fmt(a, 2)} km² is smaller than the 0.5 km² minimum; draw a larger box`
+    : outside ? 'Outside 56° S to 78° N, where the permanent-water layer exists' : '';
+  S.aoi = { bbox: b, ring: ringOf(b), area: a, label, ok: !problem };
+  $('aoi-info').hidden = false;
+  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${problem ? ' warn' : ''}">${fmt(a, a < 10 ? 2 : 0)} km²</span>${problem ? `<span class="warn">${esc(problem)}</span>` : ''}`;
+  summary(0, `${label || 'Area'}, ${fmt(a, a < 10 ? 2 : 0)} km²`); summary(1, 'Before and after the flood');
+  searchSeq++; S.acq = []; S.pre = S.post = null; S.searched = null; if (!running && S.result) clearResult(); renderTimeline(); updateRun();
   await ready;
   map.getSource('aoi').setData({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [S.aoi.ring] } });
-  const ok = a <= LIMIT_KM2 && a >= 0.5;
-  S.aoi.ok = ok && b[1] >= -56 && b[3] <= 78;
-  $('aoi-info').hidden = false;
-  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${ok ? '' : ' warn'}">${fmt(a, 0)} km²</span>${ok ? '' : `<span class="warn">${a > LIMIT_KM2 ? 'Larger than 3,600 km²; draw a smaller box' : 'Too small'}</span>`}`;
-  summary(0, `${label || 'Area'}, ${fmt(a, 0)} km²`); summary(1, 'Before and after the flood');
-  searchSeq++; S.acq = []; S.pre = S.post = null; if (!running && S.result) clearResult(); renderTimeline(); updateRun();
-  if (b[1] < -56 || b[3] > 78) $('aoi-info').insertAdjacentHTML('beforeend', '<span class="warn">Outside 56° S to 78° N, where the permanent-water layer exists</span>');
-  return ok;
+  return !problem;
 }
 
 // draw a rectangle: press "Draw area", then drag
@@ -89,7 +102,10 @@ const finish = e => {
   if (!drawing || !start) return;
   const b = [Math.min(start.lng, e.lngLat.lng), Math.min(start.lat, e.lngLat.lat), Math.max(start.lng, e.lngLat.lng), Math.max(start.lat, e.lngLat.lat)];
   start = null; setDraw(false);
-  if (b[2] - b[0] < 1e-4 || b[3] - b[1] < 1e-4) return;
+  if (b[2] - b[0] < 1e-4 || b[3] - b[1] < 1e-4) {   // a click or a line, not a box
+    map.getSource('aoi').setData(S.aoi ? { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [S.aoi.ring] } } : { type: 'FeatureCollection', features: [] });
+    $('aoi-info').hidden = false; $('aoi-info').innerHTML = '<span class="warn">That box has no area. Press Draw a box, then drag across the map.</span>'; return;
+  }
   setAoi(b, 'Drawn area');
 };
 map.on('mouseup', finish); map.on('touchend', finish);
@@ -100,7 +116,7 @@ $('search').addEventListener('submit', async ev => {
   const q = $('q').value.trim(); if (!q) return;
   const ul = $('search-results'); ul.hidden = false; ul.innerHTML = '<li class="small" style="padding:.45rem .6rem">Searching…</li>';
   try {
-    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`, { headers: { 'Accept-Language': 'en' } });
+    const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`, { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw new Error(`search failed (${r.status})`);
     const list = await r.json();
     ul.innerHTML = list.length ? '' : '<li class="small" style="padding:.45rem .6rem">No place found.</li>';
@@ -116,7 +132,7 @@ $('search').addEventListener('submit', async ev => {
       };
       li.append(b); ul.append(li);
     }
-  } catch (e) { ul.innerHTML = `<li class="small" style="padding:.45rem .6rem">Place search is unavailable (${esc(e.message)}). Draw an area instead.</li>`; }
+  } catch (e) { ul.innerHTML = `<li class="small" style="padding:.45rem .6rem">Place search is unavailable (${esc(e.name === 'TimeoutError' ? 'no answer within 15 seconds' : e.message)}). Draw a box on the map instead.</li>`; }
 });
 
 // ---------------------------------------------------------------- acquisitions
@@ -131,20 +147,27 @@ async function listImages() {
   try {
     const { list, truncated } = await ask('acquisitions', { bbox: S.aoi.bbox, start: `${d0}T00:00:00Z`, end: `${d1}T23:59:59Z` });
     if (mine !== searchSeq || S.aoi !== aoiAtStart) return;   // the area or the dates changed while searching
-    S.acq = list; S.pre = S.post = null; renderTimeline(); updateRun();
+    S.acq = list; S.pre = S.post = null; S.searched = { d0, d1, truncated }; renderTimeline(); updateRun();
     if (truncated) $('pick-info').insertAdjacentHTML('afterbegin', '<span class="warn">Only the first 400 scenes are listed; shorten the date range to see later ones.</span> ');
-  } catch (e) { $('timeline').innerHTML = `<p class="empty-state warn">Could not search the archive: ${esc(e.message)}</p>`; }
+  } catch (e) { if (mine !== searchSeq) return; S.acq = []; S.searched = null; $('timeline').innerHTML = `<p class="empty-state warn" role="alert">Could not list the images. ${esc(e.message)} Press List images to try again.</p>`; $('pick-info').textContent = ''; updateRun(); }
 }
 const trackKey = a => `${a.orbitState} · relative orbit ${a.relativeOrbit}`;
 function renderTimeline() {
   const el = $('timeline');
-  if (!S.acq.length) { el.innerHTML = `<p class="empty-state">${S.aoi ? 'List the images for this area (step 2).' : 'Choose an area, then list the images.'}</p>`; $('pick-info').textContent = S.aoi ? 'List the images available for this area.' : 'Choose an area first.'; return; }
+  if (!S.acq.length) {
+    if (S.searched) {   // a search ran and found nothing: say so, do not ask the user to search again
+      const q = S.searched;
+      el.innerHTML = `<p class="empty-state warn" role="status">No Sentinel-1 radar images were found for this area between ${esc(q.d0)} and ${esc(q.d1)}. Widen the dates in step 2, or move the box.</p>`;
+      $('pick-info').textContent = 'No images found.'; summary(1, 'No images found'); return;
+    }
+    el.innerHTML = `<p class="empty-state">${S.aoi ? 'List the images for this area (step 2).' : 'Choose an area, then list the images.'}</p>`; $('pick-info').textContent = S.aoi ? 'List the images available for this area.' : 'Choose an area first.'; return;
+  }
   const groups = new Map();
   for (const a of S.acq) { const k = trackKey(a); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); }
   el.innerHTML = '';
   for (const [k, items] of groups) {
     const box = document.createElement('div'); box.className = 'track';
-    box.innerHTML = `<span class="lbl">${esc(k[0].toUpperCase() + k.slice(1))} · ${items.length} images</span>`;
+    box.innerHTML = `<span class="lbl">${esc(k[0].toUpperCase() + k.slice(1))} · ${items.length} image${items.length === 1 ? '; a second image on this track is needed to make a pair' : 's'}</span>`;
     const t = document.createElement('div'); t.className = 'ticks';
     for (const a of items) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'tick';
@@ -157,6 +180,8 @@ function renderTimeline() {
     }
     box.append(t); el.append(box);
   }
+  const canPair = [...groups.values()].some(g => g.length > 1);
+  if (!canPair) { $('pick-info').innerHTML = '<span class="warn">Every track has only one image, so no before and after pair can be made. Widen the dates in step 2.</span>'; summary(1, 'Only one image per track'); return; }
   $('pick-info').innerHTML = !S.pre ? 'Choose the <strong>before</strong> image.' : !S.post ? `Before: ${S.pre.datetime.slice(0, 10)}. Now choose the <strong>after</strong> image on the same track, or another date to change the before image.`
     : `Before ${S.pre.datetime.slice(0, 10)}, after ${S.post.datetime.slice(0, 10)}: ${Math.round((Date.parse(S.post.datetime) - Date.parse(S.pre.datetime)) / 864e5)} days apart. Click a date to start again.`;
   summary(1, S.pre && S.post ? `${S.pre.datetime.slice(0, 10)} to ${S.post.datetime.slice(0, 10)}` : S.pre ? `Before ${S.pre.datetime.slice(0, 10)}; choose after` : 'Before and after the flood');
@@ -193,7 +218,7 @@ function go(n) {
     const k = +el.dataset.step, open = k === n;
     el.classList.toggle('open', open); el.querySelector('[data-pane]').hidden = !open; el.querySelector('.step-h').setAttribute('aria-expanded', String(open));
   });
-  if (n === 1 && S.aoi && !S.acq.length) listImages();
+  if (n === 1 && S.aoi && !S.acq.length && !S.searched) listImages();
   if (n === 1) showTab('images');
   updateRun();
 }
@@ -230,7 +255,7 @@ async function runNow() {
   S.result = null; $('inspect').hidden = true; $('figures').classList.add('empty'); summary(2, 'Running');
   logLine('Starting', 'now');
   let zones = null;
-  if ($('p-zones').checked) zones = await loadZones(aoi).catch(e => { logLine(`Administrative areas unavailable: ${e.message}`, 'err'); return null; });
+  if ($('p-zones').checked) zones = await loadZones(aoi).catch(e => { logLine(`Administrative areas could not be looked up (${/fetch|network/i.test(e.message) ? 'the place service did not answer' : e.message}), so the Areas tab stays empty. The flood map and totals are not affected.`, 'err'); return null; });
   try {
     const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [aoi.ring] }, pre, post, params: P(), base: BASE, zones, label: aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
@@ -257,7 +282,7 @@ function scheduleReclassify(extra) {
 // administrative areas from geoBoundaries (second level where available, else first)
 async function loadZones(aoi) {
   const [cx, cy] = [(aoi.bbox[0] + aoi.bbox[2]) / 2, (aoi.bbox[1] + aoi.bbox[3]) / 2];
-  const r = await fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=3&lat=${cy}&lon=${cx}`, { headers: { 'Accept-Language': 'en' } });
+  const r = await fetch(`${NOMINATIM}/reverse?format=jsonv2&zoom=3&lat=${cy}&lon=${cx}`, { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(15000) });
   if (!r.ok) throw new Error('country lookup failed');
   const j = await r.json(), iso2 = j.address && j.address.country_code;
   if (!iso2) throw new Error('the area is not inside a country');
@@ -300,7 +325,7 @@ async function drawResult(r, fit) {
     const lons = corners.map(c => c[0]), lats = corners.map(c => c[1]);
     fitBox([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]);
   }
-  renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r);
+  renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r); syncExports();
   $('thr-empty').hidden = true;
   if (fit) { showTab('thr'); if (window.innerWidth <= 860) document.querySelector('.main').scrollIntoView({ behavior: 'smooth' }); }
 }
@@ -340,7 +365,7 @@ function applyVisibility() {
   if (map.getLayer('s2')) map.setLayoutProperty('s2', 'visibility', visible.s2 ? 'visible' : 'none');
 }
 function renderLegend() {
-  const L = $('legend'); L.hidden = false;
+  const L = showLegend();
   const rows = [['flood', 'Flood, high confidence', COLORS[2]], ['flood', 'Flood, medium confidence', COLORS[3]], ['perm', 'Permanent water', COLORS[4]],
     ['before', 'Water before the event', COLORS[6]], ['steep', 'Excluded: slope', COLORS[5]], ['radar', 'Radar image (swipe)', null], ['s2', 'Sentinel-2 cloudless basemap', null]];
   L.innerHTML = rows.map(([k, t, c], i) => `<label${i === 1 ? ' style="padding-left:21px"' : ''}><input type="checkbox" data-k="${k}" ${visible[k] ? 'checked' : ''} ${i === 1 ? 'hidden' : ''}>${c ? `<i style="background:rgba(${c.slice(0, 3)},${c[3] / 255})"></i>` : ''}${t}</label>`).join('') +
@@ -386,11 +411,16 @@ function renderFigures(r) {
   const k = [
     ['New water', fmt(a.flood, a.flood < 10 ? 2 : 1), 'km²', `${fmt(share)}% of the ${fmt(a.valid, 0)} km² with valid radar`],
     ['High confidence', fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1), 'km²', vh ? `Plus ${fmt(a.floodMedium, 2)} km² where only VV darkened` : 'No VH in these images'],
-    ['Modelled residents', fmtInt(s.population.inFlood), '', `${fmtInt(s.population.inFloodHigh)} of them in high-confidence water`],
+    popKpi(s, m),
     ['Permanent water', fmt(a.permanent, 1), 'km²', `Excluded, plus ${fmt(a.waterBefore, 1)} km² wet before`],
   ];
   $('figures').classList.remove('empty');
   $('figures').innerHTML = k.map(([l, v, u, t]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}${u ? `<small>${u}</small>` : ''}</div><div class="d" title="${esc(t)}">${esc(t)}</div></div>`).join('');
+}
+function popKpi(s, m) {   // population is shown only where the GHS-POP tiles cover the analysed pixels
+  const p = s.population, none = s.validPixels > 0 && p.pixelsWithoutPopulation >= s.validPixels, part = p.pixelsWithoutPopulation / Math.max(1, s.validPixels);
+  if (none) return ['Modelled residents', '–', '', m.populationNote || 'No GHS-POP population data for this area'];
+  return ['Modelled residents', fmtInt(p.inFlood), '', `${fmtInt(p.inFloodHigh)} of them in high-confidence water${part > 0.005 ? `; no population data for ${fmt(part * 100, 0)}% of the analysed pixels` : ''}`];
 }
 function renderLandcover(r) {
   const e = Object.entries(r.summary.landcoverKm2), max = Math.max(...e.map(x => x[1]), 1e-9);
@@ -423,7 +453,7 @@ function drawHist(r) {
   }
   hctx.strokeStyle = '#dde1e5'; hctx.lineWidth = 1; hctx.beginPath(); hctx.moveTo(pad.l, Hh - pad.b + 0.5); hctx.lineTo(W - pad.r, Hh - pad.b + 0.5); hctx.stroke();
   hctx.strokeStyle = '#16191d'; hctx.lineWidth = 2; hctx.beginPath(); hctx.moveTo(X(t), pad.t - 6); hctx.lineTo(X(t), Hh - pad.b); hctx.stroke();
-  hctx.fillStyle = '#6b737d'; hctx.font = '12px Satoshi, system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
+  hctx.fillStyle = "#5f6772"; hctx.font = '12px Satoshi, system-ui, sans-serif'; hctx.textAlign = 'center'; hctx.textBaseline = 'alphabetic';
   for (let d = -30; d <= 0; d += 5) hctx.fillText(`${String(d).replace('-', '−')}${d === 0 ? ' dB' : ''}`, Math.min(Math.max(X(d), 14), W - 18), Hh - 8);
   hctx.fillStyle = '#16191d'; hctx.font = '600 12.5px Satoshi, system-ui, sans-serif';
   const lab = `Water below ${fmt(t)} dB`.replace('-', '−');
@@ -456,9 +486,18 @@ H.addEventListener('keydown', ev => {
 });
 
 // ---------------------------------------------------------------- exports
+// Download items are disabled until a result exists; the flood extent is also disabled when the result holds no flood water
+function syncExports() {
+  const has = !!S.result, flood = has ? S.result.summary.areaKm2.flood : 0;
+  document.querySelectorAll('[data-export]').forEach(b => { b.disabled = !has || (b.dataset.export === 'geojson' && !(flood > 0)); });
+  const note = $('dl-note');
+  note.hidden = has && flood > 0;
+  note.textContent = !has ? 'Downloads are available once a flood map exists.' : 'This result has no flood water, so there is no flood extent to download.';
+}
 const NAMES = { geojson: 'flood-extent.geojson', geotiff: 'flood-classes.tif', csv: 'flood-statistics.csv', json: 'processing-metadata.json' };
 document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', async () => {
   if (!S.result) return;
+  if (b.disabled) return;
   const kind = b.dataset.export, stem = `floodscope_${S.result.meta.post.datetime.slice(0, 10)}`;
   try {
     if (kind === 'png') return save(await mapPng(), `${stem}_map.png`);
@@ -523,7 +562,7 @@ const EMPTY_KPI = $('figures').innerHTML;
 function clearResult() {
   S.result = null;
   ['cls', 'radar'].forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none'); });
-  $('legend').hidden = true; $('inspect').hidden = true;
+  $('legend').hidden = true; $('inspect').hidden = true; syncExports();
   $('figures').classList.add('empty'); $('figures').innerHTML = EMPTY_KPI;
   $('thr-empty').hidden = false; hctx.setTransform(1, 0, 0, 1, 0, 0); hctx.clearRect(0, 0, H.width, H.height);
   $('lc').innerHTML = '<p class="empty-state">Map a flood to see its land cover.</p>';
@@ -549,11 +588,16 @@ tabBtns.forEach(b => {
     if (j < 0) return; e.preventDefault(); tabBtns[j].focus(); showTab(tabBtns[j].dataset.tab);
   });
 });
-$('dl-menu').addEventListener('toggle', () => { if ($('dl-menu').open && !S.result) { $('dl-menu').open = false; $('r-sub').textContent = 'Map a flood first; downloads are made from the result.'; } });
 document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => { $('dl-menu').open = false; }));
 document.addEventListener('click', e => { if ($('dl-menu').open && !$('dl-menu').contains(e.target)) $('dl-menu').open = false; });
-$('about-open').addEventListener('click', () => { $('about').hidden = false; $('about-close').focus(); });
-$('about-close').addEventListener('click', () => { $('about').hidden = true; $('about-open').focus(); });
-$('about').addEventListener('click', e => { if (e.target === $('about')) $('about').hidden = true; });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('about').hidden = true; $('dl-menu').open = false; if (drawing) setDraw(false); } });
-renderTimeline(); go(0);
+const aboutOpen = () => { $('about').hidden = false; $('about-close').focus(); }, aboutClose = () => { $('about').hidden = true; $('about-open').focus(); };
+$('about-open').addEventListener('click', aboutOpen);
+$('about-close').addEventListener('click', aboutClose);
+$('about').addEventListener('click', e => { if (e.target === $('about')) aboutClose(); });
+$('about').addEventListener('keydown', e => {   // keep Tab inside the open dialog
+  if (e.key !== 'Tab') return;
+  const f = [...$('about').querySelectorAll('a[href], button:not([disabled])')], first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('about').hidden) aboutClose(); $('dl-menu').open = false; if (drawing) setDraw(false); } });
+renderTimeline(); go(0); syncExports();
