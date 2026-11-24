@@ -113,7 +113,8 @@ map.on('mouseup', finish); map.on('touchend', finish);
 // place search (Nominatim, on submit only, as its usage policy asks)
 $('search').addEventListener('submit', async ev => {
   ev.preventDefault();
-  const q = $('q').value.trim(); if (!q) return;
+  const q = $('q').value.trim();
+  if (!q) { const u = $('search-results'); u.hidden = false; u.innerHTML = '<li class="small" style="padding:8px 10px">Type a place name, or draw a box on the map.</li>'; $('q').focus(); return; }
   const ul = $('search-results'); ul.hidden = false; ul.innerHTML = '<li class="small" style="padding:.45rem .6rem">Searching…</li>';
   try {
     const r = await fetch(`${NOMINATIM}/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`, { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(15000) });
