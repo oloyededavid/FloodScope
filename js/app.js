@@ -38,7 +38,10 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
-map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+// on phones the scale sits bottom-left above the legend chip and the map credits start closed (the i button opens them)
+const PHONE = matchMedia('(max-width: 860px)').matches;
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), PHONE ? 'bottom-left' : 'bottom-right');
+if (PHONE) map.once('load', () => document.querySelectorAll('.maplibregl-ctrl-attrib').forEach(e => { e.classList.remove('maplibregl-compact-show'); e.removeAttribute('open'); }));
 const ready = new Promise(r => map.on('load', r));
 // if the basemap style cannot be fetched (host down, blocked network) fall back to a plain background so the tool still works
 const FALLBACK_STYLE = { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e9ecef' } }] };

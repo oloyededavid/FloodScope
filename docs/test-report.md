@@ -66,3 +66,5 @@ A separate review agent read the code and docs and fuzzed the tracer. It found n
 | 29 | Example button in the side panel at 1440 px | label not cut off | "Example", 103 of 103 px, accessible name "Run the Lokoja example" | Pass |
 
 Changes in 1.1.1: the Areas tab gives the reason when administrative areas could not be loaded, and the boundary requests time out (20 s and 30 s); the land-cover sentence says "the largest share" rather than "most"; the minus sign is applied to the threshold only, so the satellite name keeps its hyphen; summary CSV numbers are written to six decimal places at most; the medium-confidence legend row says it is shown with the row above. The analysis is unchanged.
+
+Phone map overlays (after 1.1.1, same version): at 860 px and below the scale bar sits bottom-left above the Legend chip, the map credits start closed behind the i button, and layer chips stay in one scrolling row. Checked at 390 px after an example run: no overlapping overlays; axe 0 violations.
