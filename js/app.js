@@ -62,7 +62,8 @@ function areaKm2(b) { // spherical rectangle
   const R = 6371.0088, r = Math.PI / 180;
   return R * R * Math.abs((b[2] - b[0]) * r) * Math.abs(Math.sin(b[3] * r) - Math.sin(b[1] * r));
 }
-async function setAoi(b, label) {
+async function setAoi(b, label, note) {
+  S.example = false;
   const shift = Math.round(((b[0] + b[2]) / 2) / 360) * 360;   // the map repeats the world sideways
   b = [b[0] - shift, b[1], b[2] - shift, b[3]];
   const crosses = b[0] < -180 || b[2] > 180;   // a box over the 180° meridian cannot be one UTM grid
@@ -74,7 +75,7 @@ async function setAoi(b, label) {
     : outside ? 'Outside 56° S to 78° N, where the permanent-water layer exists' : '';
   S.aoi = { bbox: b, ring: ringOf(b), area: a, label, ok: !problem };
   $('aoi-info').hidden = false;
-  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${problem ? ' warn' : ''}">${fmt(a, a < 10 ? 2 : 0)} km²</span>${problem ? `<span class="warn">${esc(problem)}</span>` : ''}`;
+  $('aoi-info').innerHTML = `<span>${esc(label || 'Area')}</span><span class="num${problem ? ' warn' : ''}">${fmt(a, a < 10 ? 2 : 0)} km²</span>${problem ? `<span class="warn">${esc(problem)}</span>` : ''}${note && !problem ? `<span class="small">${esc(note)}</span>` : ''}`;
   summary(0, `${label || 'Area'}, ${fmt(a, a < 10 ? 2 : 0)} km²`); summary(1, 'Before and after the flood');
   searchSeq++; S.acq = []; S.pre = S.post = null; S.searched = null; if (!running && S.result) clearResult(); renderTimeline(); updateRun();
   await ready;
@@ -128,7 +129,8 @@ $('search').addEventListener('submit', async ev => {
         ul.hidden = true;
         const lat = +p.lat, lon = +p.lon, k = 0.09 / Math.cos(lat * Math.PI / 180);   // about 20 x 20 km around the place
         const box = [lon - k, lat - 0.09, lon + k, lat + 0.09];
-        setAoi(box, p.name || p.display_name.split(',')[0]);
+        const name = p.name || p.display_name.split(',')[0], wide = ['country', 'state', 'region', 'province', 'county', 'administrative'].includes(p.addresstype || p.type);
+        setAoi(box, `20 × 20 km around ${name}`, wide ? `A box around the centre point of ${name}, not the whole ${p.addresstype || 'area'}. Draw a box to choose the part you need.` : 'A box around the place\'s centre point. Draw a box to choose the area yourself.');
         fitBox(box);
       };
       li.append(b); ul.append(li);
@@ -199,6 +201,7 @@ function updateRun() {
   $('next-0').disabled = !(S.aoi && S.aoi.ok);
   $('next-1').disabled = !(S.pre && S.post);
   setLocks();
+  $('hint-0').hidden = !$('next-0').disabled; $('hint-1').hidden = !$('next-1').disabled; $('hint-2').hidden = !$('run').disabled || running;
 }
 
 // ---------------------------------------------------------------- steps (accordion in the rail)
@@ -265,7 +268,7 @@ async function runNow() {
     $('p-thr').value = r.threshold.value; $('o-thr').textContent = `${fmt(r.threshold.value)} dB`.replace('-', '−');
     await drawResult(r, true);
   } catch (e) { logLine(e.message, 'err'); summary(2, 'Failed; see the message below'); }
-  finally { running = false; $('demo').disabled = false; updateRun(); }
+  finally { running = false; $('demo').disabled = false; updateRun(); if (!S.result) { $('intro').hidden = false; $('figures').hidden = true; } }
 }
 
 let rcTimer = null, rcSeq = 0;
@@ -326,9 +329,9 @@ async function drawResult(r, fit) {
     const lons = corners.map(c => c[0]), lats = corners.map(c => c[1]);
     fitBox([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]);
   }
-  renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r); syncExports();
-  $('thr-empty').hidden = true;
-  if (fit) { showTab('thr'); if (window.innerWidth <= 860) document.querySelector('.main').scrollIntoView({ behavior: 'smooth' }); }
+  renderLegend(); renderFigures(r); drawHist(r); renderLandcover(r); renderZones(r); syncExports(); reading(r); thresholdNote(r);
+  $('thr-empty').hidden = true; $('intro').hidden = true; $('figures').hidden = false;
+  if (fit) { showTab('thr'); if (window.innerWidth <= 860) { $('legend').open = false; $('reading').scrollIntoView({ behavior: 'smooth' }); } shareUrl(); }
 }
 function paintClasses(cls, g) {
   const c = document.createElement('canvas'); c.width = g.w; c.height = g.h;
@@ -420,8 +423,9 @@ function renderFigures(r) {
 }
 function popKpi(s, m) {   // population is shown only where the GHS-POP tiles cover the analysed pixels
   const p = s.population, none = s.validPixels > 0 && p.pixelsWithoutPopulation >= s.validPixels, part = p.pixelsWithoutPopulation / Math.max(1, s.validPixels);
-  if (none) return ['Modelled residents', '–', '', m.populationNote || 'No GHS-POP population data for this area'];
-  return ['Modelled residents', fmtInt(p.inFlood), '', `${fmtInt(p.inFloodHigh)} of them in high-confidence water${part > 0.005 ? `; no population data for ${fmt(part * 100, 0)}% of the analysed pixels` : ''}`];
+  const L = 'Modelled residents<span class="tag">estimate</span>';
+  if (none) return [L, '–', '', m.populationNote || 'No GHS-POP population data for this area'];
+  return [L, fmtInt(p.inFlood), '', `GHS-POP 2025 model, not people affected; ${fmtInt(p.inFloodHigh)} in high-confidence water${part > 0.005 ? `; no population data for ${fmt(part * 100, 0)}% of the pixels` : ''}`];
 }
 function renderLandcover(r) {
   const e = Object.entries(r.summary.landcoverKm2), max = Math.max(...e.map(x => x[1]), 1e-9);
@@ -444,6 +448,7 @@ function drawHist(r) {
   const W = H.clientWidth || H.parentElement.clientWidth || 340, Hh = HIST_H, dpr = window.devicePixelRatio || 1;
   if (H.width !== Math.round(W * dpr)) { H.width = Math.round(W * dpr); H.height = Math.round(Hh * dpr); H.style.height = `${Hh}px`; }
   hctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  H.setAttribute('aria-valuenow', String(r.threshold.value)); H.setAttribute('aria-valuetext', `${fmt(r.threshold.value)} dB; ${fmt(r.summary.areaKm2.flood, 2)} km² of new water`.replace('-', '−'));
   const pad = { l: 8, r: 8, t: 22, b: 26 }, h = r.hist, max = Math.max(...h, 1);
   hctx.clearRect(0, 0, W, Hh);
   const X = db => pad.l + (db + 30) / 30 * (W - pad.l - pad.r), Y = v => Hh - pad.b - Math.sqrt(v / max) * (Hh - pad.t - pad.b);
@@ -495,6 +500,48 @@ function syncExports() {
   note.hidden = has && flood > 0;
   note.textContent = !has ? 'Downloads are available once a flood map exists.' : 'This result has no flood water, so there is no flood extent to download.';
 }
+// a link that reproduces the analysis: area, label, dates, the two images and the rules; the data are read again when it opens
+function shareUrl() {
+  const r = S.result; if (!r) return location.href;
+  const u = new URL(location.href.split('#')[0]); u.search = '';
+  const q = { bbox: S.aoi.bbox.map(v => v.toFixed(5)).join(','), label: S.aoi.label || '', from: $('d0').value, to: $('d1').value, pre: r.meta.pre.id, post: r.meta.post.id,
+    auto: $('p-auto').checked ? 1 : 0, thr: r.params.threshold, chg: r.params.changeDb, slope: r.params.slopeMax, occ: r.params.permanentOccurrence };
+  Object.entries(q).forEach(([k, v]) => u.searchParams.set(k, v)); history.replaceState(null, '', u); return u.href;
+}
+// a reading of the result from computed values only
+const EXAMPLE = { pre: '2022-08-02', post: '2022-10-13' };
+function reading(r) {
+  const s = r.summary, a = s.areaKm2, m = r.meta, p = s.population;
+  const d = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const lc = Object.entries(s.landcoverKm2 || {}).filter(([k]) => +k !== 80).sort((x, y) => y[1] - x[1])[0];
+  const share = a.valid ? a.flood / a.valid * 100 : 0;
+  $('rd-main').innerHTML = a.flood > 0
+    ? `Between ${d(m.pre.datetime)} and ${d(m.post.datetime)}, <span class="k">${fmt(a.flood, a.flood < 10 ? 2 : 1)} km²</span> of ground turned to open water, ${fmt(share)}% of the ${fmt(a.valid, 0)} km² the radar could see; ${fmt(a.floodHigh, 1)} km² of it is high confidence (both polarisations darkened)${lc && lc[1] > 0 ? `, and most of it lies on ${esc((WORLDCOVER[lc[0]] || '').toLowerCase())} (${fmt(lc[1], 1)} km²)` : ''}.`
+    : `No new open water was found between ${d(m.pre.datetime)} and ${d(m.post.datetime)} with these rules.`;
+  const none = s.validPixels > 0 && p.pixelsWithoutPopulation >= s.validPixels;
+  $('rd-detail').innerHTML = (none ? 'There is no population model for this area. '
+    : `About <span class="k">${fmtInt(p.inFlood)} people</span> are modelled to live inside that water (GHS-POP 2025, spread evenly over each 1 km cell). This is an estimate of exposure, not a count of people affected, displaced or harmed. `)
+    + (r.params.threshold != null ? `The water threshold is ${fmt(r.params.threshold)} dB; moving it changes the area, so test it on the Threshold tab.`.replace('-', '−') : '');
+  const isExample = S.example && m.pre.datetime.startsWith(EXAMPLE.pre) && m.post.datetime.startsWith(EXAMPLE.post) && Math.abs(r.params.threshold + 18) < 1e-6;
+  $('rd-limit').innerHTML = (isExample ? 'For this example, 99.9% of the water mapped here is also water in UNOSAT\'s independent VIIRS flood map of 13–17 October 2022, while FloodScope finds 50.2% of UNOSAT\'s water; at −20 dB the area is 9.6 km², at −14 dB 40.0 km². Agreement is not accuracy. ' : '')
+    + '<b>What this does not show:</b> floods under tree canopy, between tall buildings or in shallow vegetated water are often missed; water that came and went between the two images is not seen; nothing here is confirmed on the ground.';
+  $('reading').hidden = false;
+}
+// why the automatic threshold was or was not used, from the run's own histogram statistics (the rule in pipeline.js)
+function thresholdNote(r) {
+  const t = r.threshold, o = t.otsu || {}, pm = r.params, lo = pm.otsuMin ?? -24, hi = pm.otsuMax ?? -14, el = $('thr-note');
+  const why = [];
+  if (!(o.t === o.t)) why.push('there were too few pixels to find a split');
+  else {
+    if (o.valleyRatio > 0.5) why.push('the histogram has no clear second peak');
+    if (o.minorShare < 0.02) why.push(`the darker group holds only ${fmt(o.minorShare * 100, 1)}% of pixels`);
+    if (o.t < lo || o.t > hi) why.push(`the best split it finds, ${fmt(o.t)} dB, lies outside ${lo} to ${hi} dB, the range where it reliably separates water from land`);
+  }
+  el.textContent = (t.source === 'otsu' ? `The threshold, ${fmt(t.value)} dB, was set automatically: the histogram has two separate peaks and the split falls in the range expected for water.`
+    : /^default/.test(t.source) ? `The automatic threshold was not used because ${why.join(', and ')}, so the standard ${fmt(t.value)} dB was applied.`
+    : `The threshold, ${fmt(t.value)} dB, was set by you.`).replace(/-(\d)/g, '−$1');
+  el.hidden = false;
+}
 const NAMES = { geojson: 'flood-extent.geojson', geotiff: 'flood-classes.tif', csv: 'flood-statistics.csv', json: 'processing-metadata.json' };
 document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', async () => {
   if (!S.result) return;
@@ -503,22 +550,45 @@ document.querySelectorAll('[data-export]').forEach(b => b.addEventListener('clic
   try {
     if (kind === 'png') return save(await mapPng(), `${stem}_map.png`);
     if (kind === 'pdf') return printReport();
+    if (kind === 'link') { const u = shareUrl(); try { await navigator.clipboard.writeText(u); $('dl-note').hidden = false; $('dl-note').textContent = 'Link copied. Opening it lists the same images and runs the analysis again.'; } catch { prompt('Copy this link:', u); } return; }
     const { blob } = await ask('export', { kind });
     save(blob, `${stem}_${NAMES[kind]}`);
   } catch (e) { $('r-sub').textContent = `Download failed: ${e.message}`; }
 }));
 function save(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); }
 async function mapPng() {
+  // the exported image carries what is needed to read it: legend, scale, dates, area, method line, sources and limits
   await new Promise(r => { map.once('render', r); map.triggerRepaint(); });
-  const src = map.getCanvas(), c = document.createElement('canvas'), dpr = window.devicePixelRatio || 1, foot = 50 * dpr;
+  const src = map.getCanvas(), c = document.createElement('canvas'), dpr = src.width / map.getCanvas().clientWidth || 1;
+  const r = S.result, m = r.meta, a = r.summary.areaKm2, F = (px, w = 400) => `${w} ${px * dpr}px Satoshi, sans-serif`;
+  // footer text, wrapped to the image width
+  const lines = [[F(13, 500), '#141412', 17, `FloodScope · ${m.label || 'Area'} · new water between ${m.pre.datetime.slice(0, 10)} and ${m.post.datetime.slice(0, 10)}: ${fmt(a.flood, 2)} km²`],
+    [F(10.5), '#55544e', 14, `Sentinel-1 ${m.post.orbitState} orbit ${m.post.relativeOrbit}; VV after below ${fmt(r.params.threshold)} dB and at least ${fmt(-r.params.changeDb)} dB darker; slope ≤ ${r.params.slopeMax}°; permanent water (JRC ≥ ${r.params.permanentOccurrence}%) excluded. FloodScope ${m.version}.`.replace(/-(\d)/g, '−$1')],
+    [F(10.5), '#55544e', 14, 'Limits: water under canopy, between buildings or gone before the second image is missed; not confirmed on the ground.'],
+    [F(10.5), '#55544e', 14, 'Data: Sentinel-1 RTC (Planetary Computer, modified Copernicus Sentinel data), JRC GSW, Copernicus DEM, ESA WorldCover. Basemap © OpenStreetMap contributors, OpenFreeMap.']];
+  const meas = c.getContext('2d'), wrapped = [];
+  for (const [font, col, lh, text] of lines) { meas.font = font; let cur = ''; for (const w of text.split(' ')) { const t = cur ? cur + ' ' + w : w; if (meas.measureText(t).width > src.width - 20 * dpr && cur) { wrapped.push([font, col, lh, cur]); cur = w; } else cur = t; } wrapped.push([font, col, lh, cur]); }
+  const foot = (14 + wrapped.reduce((n, l) => n + l[2], 0)) * dpr;
   c.width = src.width; c.height = src.height + foot;
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(src, 0, 0);
-  const m = S.result.meta;
-  ctx.fillStyle = '#141412'; ctx.font = `${13 * dpr}px Satoshi, sans-serif`;
-  ctx.fillText(`FloodScope · flood ${m.pre.datetime.slice(0, 10)} → ${m.post.datetime.slice(0, 10)} · ${fmt(S.result.summary.areaKm2.flood, 2)} km² new water`, 10 * dpr, src.height + 20 * dpr);
-  ctx.fillStyle = '#55544e'; ctx.font = `${10 * dpr}px Satoshi, sans-serif`;
-  ctx.fillText('Sentinel-1 RTC (Planetary Computer; modified Copernicus Sentinel data), JRC GSW, Copernicus DEM, ESA WorldCover, GHS-POP. Basemap © OpenStreetMap contributors, OpenFreeMap.', 10 * dpr, src.height + 38 * dpr);
-  return new Promise(r => c.toBlob(r, 'image/png'));
+  // legend box, bottom left of the map
+  const rows = [[COLORS[2], 'Flood, high confidence', visible.flood], [COLORS[3], 'Flood, medium confidence', visible.flood], [COLORS[4], 'Permanent water', visible.perm],
+    [COLORS[6], 'Water before the event', visible.before], [COLORS[5], 'Excluded: slope', visible.steep]].filter(x => x[2]);
+  const lw = 190 * dpr, lh = (14 + rows.length * 17) * dpr, lx = 10 * dpr, ly = src.height - lh - 10 * dpr;
+  ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.fillRect(lx, ly, lw, lh); ctx.strokeStyle = '#d5d9de'; ctx.lineWidth = dpr; ctx.strokeRect(lx, ly, lw, lh);
+  rows.forEach(([col, t], i) => { const y = ly + (10 + i * 17) * dpr; ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3] / 255})`; ctx.fillRect(lx + 8 * dpr, y, 10 * dpr, 10 * dpr);
+    ctx.fillStyle = '#141412'; ctx.font = F(11.5); ctx.fillText(t, lx + 24 * dpr, y + 9 * dpr); });
+  // scale bar, bottom right of the map, from the map's ground resolution at its centre
+  const lat = map.getCenter().lat, mpp = 40075016.686 * Math.cos(lat * Math.PI / 180) / (512 * Math.pow(2, map.getZoom()));   // metres per CSS pixel
+  const nice = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000], target = 120 * mpp, len = nice.reduce((b, v) => v <= target ? v : b, nice[0]);
+  const bw = len / mpp * dpr, bx = c.width - bw - 16 * dpr, by = src.height - 18 * dpr;
+  ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.fillRect(bx - 8 * dpr, by - 18 * dpr, bw + 16 * dpr, 26 * dpr);
+  ctx.strokeStyle = '#141412'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(bx, by - 4 * dpr); ctx.lineTo(bx, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by - 4 * dpr); ctx.stroke();
+  ctx.fillStyle = '#141412'; ctx.font = F(11); ctx.textAlign = 'center'; ctx.fillText(len >= 1000 ? `${len / 1000} km` : `${len} m`, bx + bw / 2, by - 7 * dpr); ctx.textAlign = 'left';
+  // footer
+  let y = src.height + 6 * dpr;
+  for (const [font, col, lh, text] of wrapped) { y += lh * dpr; ctx.font = font; ctx.fillStyle = col; ctx.fillText(text, 10 * dpr, y); }
+  return new Promise(res => c.toBlob(res, 'image/png'));
 }
 async function printReport() {
   const r = S.result, s = r.summary, a = s.areaKm2, m = r.meta, img = URL.createObjectURL(await mapPng());
@@ -548,7 +618,7 @@ async function printReport() {
 // ---------------------------------------------------------------- example
 $('demo').addEventListener('click', async () => {
   const b = [6.70, 7.70, 6.85, 7.85];
-  await setAoi(b, 'Lokoja, Kogi State, Nigeria: Niger–Benue confluence');
+  await setAoi(b, 'Lokoja, Kogi State, Nigeria: Niger–Benue confluence'); S.example = true;
   fitBox(b); go(1);
   $('d0').value = '2022-07-01'; $('d1').value = '2022-11-30';
   await listImages();
@@ -564,7 +634,7 @@ function clearResult() {
   S.result = null;
   ['cls', 'radar'].forEach(id => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none'); });
   $('legend').hidden = true; $('inspect').hidden = true; syncExports();
-  $('figures').classList.add('empty'); $('figures').innerHTML = EMPTY_KPI;
+  $('figures').classList.add('empty'); $('figures').innerHTML = EMPTY_KPI; $('reading').hidden = true; $('thr-note').hidden = true; $('intro').hidden = running; $('figures').hidden = !running;
   $('thr-empty').hidden = false; hctx.setTransform(1, 0, 0, 1, 0, 0); hctx.clearRect(0, 0, H.width, H.height);
   $('lc').innerHTML = '<p class="empty-state">Map a flood to see its land cover.</p>';
   $('zones').innerHTML = '<p class="empty-state">Map a flood to see the areas it covers.</p>';
@@ -604,3 +674,20 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!$('ab
 // new dates make the last search out of date: the next visit to step 2 or List images searches again
 ['d0', 'd1'].forEach(id => $(id).addEventListener('change', () => { S.searched = null; if (!S.acq.length) renderTimeline(); }));
 renderTimeline(); go(0); syncExports();
+
+document.querySelectorAll('[data-start]').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.start === 'demo') $('demo').click(); else { go(0); $('q').focus(); }
+}));
+// opening a shared link: same area, dates, images and rules, then the analysis runs again on the archive
+(async () => {
+  const q = new URLSearchParams(location.search); if (!q.get('bbox') || !q.get('pre') || !q.get('post')) return;
+  const b = q.get('bbox').split(',').map(Number); if (b.length !== 4 || b.some(v => !(v === v))) return;
+  const ok = await setAoi(b, q.get('label') || 'Shared area'); fitBox(b); if (!ok) return;
+  if (q.get('from')) $('d0').value = q.get('from'); if (q.get('to')) $('d1').value = q.get('to');
+  $('p-auto').checked = q.get('auto') !== '0';
+  for (const [id, k] of [['p-thr', 'thr'], ['p-chg', 'chg'], ['p-slp', 'slope'], ['p-occ', 'occ']]) if (q.get(k) != null) { $(id).value = q.get(k); $(id).dispatchEvent(new Event('input')); }
+  go(1); await listImages();
+  const pre = S.acq.find(a => a.id === q.get('pre')), post = S.acq.find(a => a.id === q.get('post'));
+  if (!pre || !post) { logLine('The images in this link are no longer listed in the archive; choose a pair in step 2.', 'err'); return; }
+  pick(pre); pick(post); go(2); runNow();
+})();

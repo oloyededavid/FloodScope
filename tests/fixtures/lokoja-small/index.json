@@ -1,0 +1,260 @@
+{
+ "ab98243590d0c2f87c00690f4d5ea2da": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/geo+json; charset=utf-8",
+   "content-length": "64603"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+  "bytes": 64603
+ },
+ "231f6dafefd4321ea3cf67f0e471ab63": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json; charset=utf-8"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-1-rtc",
+  "bytes": 98
+ },
+ "2fa944511a10de1778acfee35373f242": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/1843827777",
+   "content-length": "65537"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vv.rtc.tiff",
+  "bytes": 65537
+ },
+ "66e70fb9a6a8166f4c6ed931b8d9d0b4": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1371209728-1372979200/1843827777",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vv.rtc.tiff",
+  "bytes": 1769473
+ },
+ "66d0c4cd175d77cb6c0d1679aafdcb74": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1413283840-1415053312/1843827777",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vv.rtc.tiff",
+  "bytes": 1769473
+ },
+ "988de58d37a94d1210481e792b337f1a": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/1838894398",
+   "content-length": "65537"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vv.rtc.tiff",
+  "bytes": 65537
+ },
+ "9b485e0f7c06ea62b2a252f26677e7ee": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1409024000-1410793472/1838894398",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vv.rtc.tiff",
+  "bytes": 1769473
+ },
+ "1b684b699eb2872482dfcfa118d55957": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1366949888-1368719360/1838894398",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vv.rtc.tiff",
+  "bytes": 1769473
+ },
+ "75255e74ff97c2596a180b5b51160992": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/1844113308",
+   "content-length": "65537"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vh.rtc.tiff",
+  "bytes": 65537
+ },
+ "56a804e439b4c005834f5e2366029727": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1413480448-1415249920/1844113308",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vh.rtc.tiff",
+  "bytes": 1769473
+ },
+ "489edc5f63295d1744204ff73f44958b": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1371406336-1373175808/1844113308",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/8/2/IW/DV/S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_CCC7/measurement/iw-vh.rtc.tiff",
+  "bytes": 1769473
+ },
+ "50ad1150d2b42f32ec9969bfd98e0867": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/1837476157",
+   "content-length": "65537"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vh.rtc.tiff",
+  "bytes": 65537
+ },
+ "3163077a0e66c094c81dc2531a0d1b88": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1408106496-1409875968/1837476157",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vh.rtc.tiff",
+  "bytes": 1769473
+ },
+ "5b065b538f54f51fa0f75348abe695b9": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 1366032384-1367801856/1837476157",
+   "content-length": "1769473"
+  },
+  "url": "https://sentinel1euwestrtc.blob.core.windows.net/sentinel1-grd-rtc/GRD/2022/10/13/IW/DV/S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_1409/measurement/iw-vh.rtc.tiff",
+  "bytes": 1769473
+ },
+ "3cfebdfd07d673b08fde8d4f18dad780": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/geo+json; charset=utf-8",
+   "content-length": "5182"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+  "bytes": 5182
+ },
+ "0adc0ffe659cb2b667d06ee9d8eacc1b": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json; charset=utf-8"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/sas/v1/token/jrc-gsw",
+  "bytes": 98
+ },
+ "9bcc851bebe7a032342c15016d05f25f": {
+  "status": 206,
+  "headers": {
+   "content-type": "image/tiff",
+   "content-range": "bytes 0-65536/36124463",
+   "content-length": "65537"
+  },
+  "url": "https://ai4edataeuwest.blob.core.windows.net/jrcglobalwater/occurrence/occurrence_0E_10Nv1_3_2020cog.tif",
+  "bytes": 65537
+ },
+ "8e60e80f72359ea96e3543b3d54afa37": {
+  "status": 206,
+  "headers": {
+   "content-type": "image/tiff",
+   "content-range": "bytes 65536-131072/36124463",
+   "content-length": "65537"
+  },
+  "url": "https://ai4edataeuwest.blob.core.windows.net/jrcglobalwater/occurrence/occurrence_0E_10Nv1_3_2020cog.tif",
+  "bytes": 65537
+ },
+ "0847b356498f7ea27d8792e0f54a42d4": {
+  "status": 206,
+  "headers": {
+   "content-type": "image/tiff",
+   "content-range": "bytes 14614528-14745600/36124463",
+   "content-length": "131073"
+  },
+  "url": "https://ai4edataeuwest.blob.core.windows.net/jrcglobalwater/occurrence/occurrence_0E_10Nv1_3_2020cog.tif",
+  "bytes": 131073
+ },
+ "6ffefd4ca605ca8e3b854c5582018fcc": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/geo+json; charset=utf-8",
+   "content-length": "2799"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+  "bytes": 2799
+ },
+ "498d5c74290f8c6f1ca2b5716f24c298": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json; charset=utf-8"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/sas/v1/token/cop-dem-glo-30",
+  "bytes": 98
+ },
+ "2abace877143acc8a8ccc1c5bb677115": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/45878120",
+   "content-length": "65537"
+  },
+  "url": "https://elevationeuwest.blob.core.windows.net/copernicus-dem/COP30_hh/Copernicus_DSM_COG_10_N07_00_E006_00_DEM.tif",
+  "bytes": 65537
+ },
+ "e0187ad49ce922e8c2774683d39926fa": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 17039360-19857408/45878120",
+   "content-length": "2818049"
+  },
+  "url": "https://elevationeuwest.blob.core.windows.net/copernicus-dem/COP30_hh/Copernicus_DSM_COG_10_N07_00_E006_00_DEM.tif",
+  "bytes": 2818049
+ },
+ "bf62f6706abcbce7e27f35389b74b1a4": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/geo+json; charset=utf-8",
+   "content-length": "5329"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/stac/v1/search",
+  "bytes": 5329
+ },
+ "a81284a557c6de77f6fbb881039f8a46": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/json; charset=utf-8"
+  },
+  "url": "https://planetarycomputer.microsoft.com/api/sas/v1/token/esa-worldcover",
+  "bytes": 98
+ },
+ "14c138eda916497c29c4ba0b5b633371": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 0-65536/163661071",
+   "content-length": "65537"
+  },
+  "url": "https://ai4edataeuwest.blob.core.windows.net/esa-worldcover/v200/2021/map/ESA_WorldCover_10m_2021_v200_N06E006_Map.tif",
+  "bytes": 65537
+ },
+ "83fe57dc18351cea758e677917fbaef2": {
+  "status": 206,
+  "headers": {
+   "content-type": "application/octet-stream",
+   "content-range": "bytes 33554432-33751040/163661071",
+   "content-length": "196609"
+  },
+  "url": "https://ai4edataeuwest.blob.core.windows.net/esa-worldcover/v200/2021/map/ESA_WorldCover_10m_2021_v200_N06E006_Map.tif",
+  "bytes": 196609
+ }
+}

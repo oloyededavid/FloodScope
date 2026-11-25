@@ -127,10 +127,18 @@ export function summaryCsv(summary, meta, params) {
     ...(meta.populationNote ? [['population', 'note', meta.populationNote, '']] : []), ['run', 'area basis', 'ground area: UTM pixel area / k^2 per column', '']];
   for (const [k, v] of Object.entries(summary.landcoverKm2)) rows.push(['flooded land cover', WORLDCOVER[k] || k, v, 'km2']);
   for (const z of summary.zones || []) rows.push(['administrative area', z.name, z.floodKm2, 'km2 flooded'], ['administrative area', z.name, z.population, 'persons in flood']);
+  for (const [k, v] of Object.entries(CLASS_NAMES)) rows.push(['class code in the GeoTIFF', k, v, '']);
+  for (const l of LIMITS) rows.push(['limit', '', l, '']);
   return csv(rows);
 }
 
+/** What a FloodScope result cannot show; written into the exports so it travels with the numbers. */
+export const LIMITS = ['Modelled residents are GHS-POP 2025 estimates spread evenly over 1 km cells, not counts of people affected.',
+  'Floods under tree canopy, between tall buildings and in shallow vegetated water are often missed.',
+  'Dry sand, smooth tarmac and some bare or burnt ground can look like water; the change test removes most of these.',
+  'Water that came and went between the two images is not seen; nothing is confirmed on the ground.'];
+
 /** Processing metadata: everything needed to rerun the analysis. */
 export function metadataJson(meta, params, threshold) {
-  return JSON.stringify({ ...meta, parameters: params, threshold }, null, 2);
+  return JSON.stringify({ ...meta, parameters: params, threshold, classCodes: CLASS_NAMES, limits: LIMITS }, null, 2);
 }

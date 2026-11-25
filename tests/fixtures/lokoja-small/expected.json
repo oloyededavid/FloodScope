@@ -1,0 +1,18 @@
+{
+ "pre": "S1A_IW_GRDH_1SDV_20220802T174605_20220802T174630_044377_054BBD_rtc",
+ "post": "S1A_IW_GRDH_1SDV_20221013T174607_20221013T174632_045427_056EAB_rtc",
+ "threshold": -18,
+ "thresholdSource": "default (automatic threshold not used: no clear second peak (valley ratio 1.00))",
+ "grid": [
+  112,
+  112,
+  20,
+  32632
+ ],
+ "classHash": "651407e8122b624b5d2270fb1a6d01b9a6712bbfffebe67480af2a88c12c189f",
+ "flood": 1.556102,
+ "floodHigh": 1.422595,
+ "permanent": 2.126882,
+ "valid": 4.891728,
+ "residents": 215.423
+}

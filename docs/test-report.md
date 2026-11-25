@@ -44,3 +44,15 @@ A separate review agent read the code and docs and fuzzed the tracer. It found n
 - Mobile touch drawing on a real device.
 - Acquisitions from 2014–2015 and areas near 56° S or 78° N.
 - An area across two datatake slices (the merging code path is reviewed, not run).
+
+## Version 1.1.0 (interface upgrade), 25 November 2026
+
+| # | Test | Expected | Actual | Result |
+|---|---|---|---|---|
+| 20 | `tests/fixture_lokoja.mjs`: whole pipeline on a 2 × 2 km box inside the Lokoja example, every network response replayed from `tests/fixtures/lokoja-small/` (18 MB) | identical scene IDs, threshold, grid, class-grid SHA-256, areas and residents | 11 of 11 identical, offline | Pass |
+| 21 | Engine and tracing unit tests after the upgrade | pass | pass | Pass |
+| 22 | Lokoja example in headless Chromium, 1440 × 900, live archive | 22.4 km², 4,987 modelled residents, Reading, threshold note, residents marked as an estimate | as expected, 32 s | Pass |
+| 23 | "Link to this analysis" opened in a new page | same images and result | 22.4 / 19.4 km², 4,987, 20.9 km² | Pass |
+| 24 | Map image and GeoTIFF downloads | legend, scale, limits on the image; GeoTIFF readable | as expected | Pass |
+| 25 | axe before and after a run; phone 390 px | 0 violations; legend collapsed; no overflow | 0; collapsed; 0 px | Pass |
+| 26 | Search "Nigeria" | box labelled as 20 × 20 km around the centre point | "20 × 20 km around Nigeria … not the whole country" | Pass |
