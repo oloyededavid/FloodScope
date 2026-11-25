@@ -258,8 +258,8 @@ async function runNow() {
   $('run').disabled = true; $('demo').disabled = true; log.innerHTML = '';
   S.result = null; $('inspect').hidden = true; $('figures').classList.add('empty'); summary(2, 'Running');
   logLine('Starting', 'now');
-  let zones = null;
-  if ($('p-zones').checked) zones = await loadZones(aoi).catch(e => { logLine(`Administrative areas could not be looked up (${/fetch|network/i.test(e.message) ? 'the place service did not answer' : e.message}), so the Areas tab stays empty. The flood map and totals are not affected.`, 'err'); return null; });
+  let zones = null; S.zonesError = $('p-zones').checked ? null : 'off';
+  if ($('p-zones').checked) zones = await loadZones(aoi).catch(e => { S.zonesError = /fetch|network|timeout|abort/i.test(e.name + ' ' + e.message) ? 'the boundary or place service did not answer' : e.message; logLine(`Administrative areas could not be looked up (${S.zonesError}), so the Areas tab stays empty. The flood map and totals are not affected.`, 'err'); return null; });
   try {
     const r = await ask('run', { args: { aoi: { type: 'Polygon', coordinates: [aoi.ring] }, pre, post, params: P(), base: BASE, zones, label: aoi.label } },
       msg => logLine(msg, msg.startsWith('Done') ? '' : 'now'));
@@ -292,12 +292,12 @@ async function loadZones(aoi) {
   if (!iso2) throw new Error('the area is not inside a country');
   const iso3 = (await (await fetch(`${BASE}/data/iso2-iso3.json`)).json()).iso2_to_iso3[iso2];
   for (const lvl of ['ADM2', 'ADM1']) {
-    const m = await fetch(`https://www.geoboundaries.org/api/current/gbOpen/${iso3}/${lvl}/`);
+    const m = await fetch(`https://www.geoboundaries.org/api/current/gbOpen/${iso3}/${lvl}/`, { signal: AbortSignal.timeout(20000) });
     if (!m.ok) continue;
     const meta = await m.json();
     const url = String(meta.simplifiedGeometryGeoJSON || '').replace(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/raw\//, 'https://media.githubusercontent.com/media/$1/$2/');
     if (!url) continue;
-    const g = await fetch(url); if (!g.ok) continue;
+    const g = await fetch(url, { signal: AbortSignal.timeout(30000) }); if (!g.ok) continue;
     const fc = await g.json();
     const [w, s, e, n] = aoi.bbox;
     fc.features = fc.features.filter(f => { const b = bboxOf(f.geometry); return b[0] < e && b[2] > w && b[1] < n && b[3] > s; });
@@ -370,7 +370,7 @@ function applyVisibility() {
 }
 function renderLegend() {
   const L = showLegend();
-  const rows = [['flood', 'Flood, high confidence', COLORS[2]], ['flood', 'Flood, medium confidence', COLORS[3]], ['perm', 'Permanent water', COLORS[4]],
+  const rows = [['flood', 'Flood, high confidence', COLORS[2]], ['flood', 'Flood, medium confidence (shown with the row above)', COLORS[3]], ['perm', 'Permanent water', COLORS[4]],
     ['before', 'Water before the event', COLORS[6]], ['steep', 'Excluded: slope', COLORS[5]], ['radar', 'Radar image (swipe)', null], ['s2', 'Sentinel-2 cloudless basemap', null]];
   L.innerHTML = rows.map(([k, t, c], i) => `<label${i === 1 ? ' style="padding-left:21px"' : ''}><input type="checkbox" data-k="${k}" ${visible[k] ? 'checked' : ''} ${i === 1 ? 'hidden' : ''}>${c ? `<i style="background:rgba(${c.slice(0, 3)},${c[3] / 255})"></i>` : ''}${t}</label>`).join('') +
     `<div class="swipe"><label for="swipe" class="small">Radar: before ⟷ after</label><input type="range" id="swipe" min="0" max="100" value="${swipeAt}" aria-label="Swipe between the radar images before and after"></div>`;
@@ -409,7 +409,7 @@ function renderFigures(r) {
   const d = t => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const neg = t => t.replace(/-(\d)/g, '−$1');
   $('r-title').textContent = m.label || 'Flood map';
-  $('r-sub').textContent = neg(`${d(m.pre.datetime)} to ${d(m.post.datetime)}, ${m.post.platform} ${m.post.orbitState} orbit ${m.post.relativeOrbit}. Water threshold ${fmt(r.threshold.value)} dB, ${r.threshold.source === 'otsu' ? 'automatic (Otsu)' : /^default/.test(r.threshold.source) ? 'default; automatic split not usable here' : 'set by you'}.`);
+  $('r-sub').textContent = `${d(m.pre.datetime)} to ${d(m.post.datetime)}, ${m.post.platform} ${m.post.orbitState} orbit ${m.post.relativeOrbit}. Water threshold ${neg(fmt(r.threshold.value))} dB, ${r.threshold.source === 'otsu' ? 'automatic (Otsu)' : /^default/.test(r.threshold.source) ? 'default; automatic split not usable here' : 'set by you'}.`;
   summary(2, neg(`Done: ${fmt(a.flood, a.flood < 10 ? 2 : 1)} km² at ${fmt(r.threshold.value)} dB`));
   const share = a.valid ? a.flood / a.valid * 100 : 0, vh = m.post.polarisations === 'VV, VH';
   const k = [
@@ -434,7 +434,7 @@ function renderLandcover(r) {
 }
 function renderZones(r) {
   const z = r.summary.zones;
-  if (!z || !z.length) { $('zones').innerHTML = S.zonesSource ? '<p class="empty-state">No flood water inside the administrative areas found.</p>' : '<p class="empty-state">Administrative areas were not loaded for this run.</p>'; return; }
+  if (!z || !z.length) { $('zones').innerHTML = S.zonesSource ? '<p class="empty-state">No flood water inside the administrative areas found.</p>' : `<p class="empty-state">${S.zonesError === 'off' || !S.zonesError ? 'Administrative areas were switched off for this run (Settings).' : `Administrative areas could not be loaded: ${esc(S.zonesError)}. The flood map and totals are not affected.`}</p>`; return; }
   $('zones').innerHTML = `<table class="t"><thead><tr><th>Area</th><th class="n">Flooded km²</th><th class="n">Residents</th></tr></thead><tbody>${
     z.slice(0, 25).map(q => `<tr><td>${esc(q.name)}</td><td class="n">${fmt(q.floodKm2, 2)}</td><td class="n">${fmtInt(q.population)}</td></tr>`).join('')}</tbody></table>
     <p class="note">Only the part of each area inside the analysed box is counted. ${esc(S.zonesSource || '')}${z.length > 25 ? ` · ${z.length - 25} more in the CSV` : ''}</p>`;
@@ -516,7 +516,7 @@ function reading(r) {
   const lc = Object.entries(s.landcoverKm2 || {}).filter(([k]) => +k !== 80).sort((x, y) => y[1] - x[1])[0];
   const share = a.valid ? a.flood / a.valid * 100 : 0;
   $('rd-main').innerHTML = a.flood > 0
-    ? `Between ${d(m.pre.datetime)} and ${d(m.post.datetime)}, <span class="k">${fmt(a.flood, a.flood < 10 ? 2 : 1)} km²</span> of ground turned to open water, ${fmt(share)}% of the ${fmt(a.valid, 0)} km² the radar could see; ${fmt(a.floodHigh, 1)} km² of it is high confidence (both polarisations darkened)${lc && lc[1] > 0 ? `, and most of it lies on ${esc((WORLDCOVER[lc[0]] || '').toLowerCase())} (${fmt(lc[1], 1)} km²)` : ''}.`
+    ? `Between ${d(m.pre.datetime)} and ${d(m.post.datetime)}, <span class="k">${fmt(a.flood, a.flood < 10 ? 2 : 1)} km²</span> of ground turned to open water, ${fmt(share)}% of the ${fmt(a.valid, 0)} km² the radar could see; ${fmt(a.floodHigh, 1)} km² of it is high confidence (both polarisations darkened)${lc && lc[1] > 0 ? `, and the largest share lies on ${esc((WORLDCOVER[lc[0]] || '').toLowerCase())} (${fmt(lc[1], 1)} km²)` : ''}.`
     : `No new open water was found between ${d(m.pre.datetime)} and ${d(m.post.datetime)} with these rules.`;
   const none = s.validPixels > 0 && p.pixelsWithoutPopulation >= s.validPixels;
   $('rd-detail').innerHTML = (none ? 'There is no population model for this area. '

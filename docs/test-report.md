@@ -56,3 +56,13 @@ A separate review agent read the code and docs and fuzzed the tracer. It found n
 | 24 | Map image and GeoTIFF downloads | legend, scale, limits on the image; GeoTIFF readable | as expected | Pass |
 | 25 | axe before and after a run; phone 390 px | 0 violations; legend collapsed; no overflow | 0; collapsed; 0 px | Pass |
 | 26 | Search "Nigeria" | box labelled as 20 × 20 km around the centre point | "20 × 20 km around Nigeria … not the whole country" | Pass |
+
+### 1.1.1 (after the independent review)
+
+| # | Check | Expected | Result | Status |
+|---|---|---|---|---|
+| 27 | Fixed-input Lokoja test after the 1.1.1 changes | all 11 values and the class-grid hash unchanged | identical | Pass |
+| 28 | Unit tests (`npm test`) | pass | all passed | Pass |
+| 29 | Example button in the side panel at 1440 px | label not cut off | "Example", 103 of 103 px, accessible name "Run the Lokoja example" | Pass |
+
+Changes in 1.1.1: the Areas tab gives the reason when administrative areas could not be loaded, and the boundary requests time out (20 s and 30 s); the land-cover sentence says "the largest share" rather than "most"; the minus sign is applied to the threshold only, so the satellite name keeps its hyphen; summary CSV numbers are written to six decimal places at most; the medium-confidence legend row says it is shown with the row above. The analysis is unchanged.

@@ -106,7 +106,8 @@ export function floodGeoJSON(cls, grid, meta, classes = [CLS.FLOOD_HIGH, CLS.FLO
 }
 
 // text cells that start with = + - @ are prefixed with ' so spreadsheet programs do not run them as formulas
-const csvCell = v => { let s = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+// numbers are written to six decimal places at most, so float noise does not look like precision
+const csvCell = v => { if (typeof v === 'number' && Number.isFinite(v) && !Number.isInteger(v)) v = Math.round(v * 1e6) / 1e6; let s = String(v ?? ''); if (typeof v === 'string' && /^[=+\-@]/.test(s)) s = "'" + s; return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n';
 
 /** Summary statistics as CSV: one block per table, each with a header row. */
