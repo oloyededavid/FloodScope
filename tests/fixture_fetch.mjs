@@ -10,13 +10,13 @@ export function installFixtureFetch(dir, mode) {
   const indexFile = `${dir}/index.json`, index = existsSync(indexFile) ? JSON.parse(readFileSync(indexFile, 'utf8')) : {};
   const real = globalThis.fetch;
   const keyOf = async (input, init = {}) => {
-    const url = typeof input === 'string' ? input : input.url, method = (init.method || 'GET').toUpperCase();
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, method = (init.method || 'GET').toUpperCase();
     const u = new URL(url); if (/blob\.core\.windows\.net$/.test(u.hostname) || u.pathname.includes('/sas/')) u.search = '';
     const h = new Headers(init.headers || {}), range = h.get('Range') || '', body = typeof init.body === 'string' ? init.body : '';
     return createHash('sha256').update(`${method} ${u.href} ${range} ${body}`).digest('hex').slice(0, 32);
   };
   globalThis.fetch = async (input, init = {}) => {
-    const url = typeof input === 'string' ? input : input.url;
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) return real(input, init);   // the repository's own files
     const key = await keyOf(input, init);
     if (mode === 'replay') {
