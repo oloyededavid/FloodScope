@@ -604,7 +604,7 @@ async function printReport() {
     <tr><td>Analysed area with valid radar</td><td>${fmt(a.valid, 1)} km²</td></tr>
     <tr><td>Permanent water (excluded)</td><td>${fmt(a.permanent, 2)} km²</td></tr><tr><td>Water before the event</td><td>${fmt(a.waterBefore, 2)} km²</td></tr>
     <tr><td>Excluded for slope</td><td>${fmt(a.steep, 2)} km²</td></tr>
-    <tr><td>Modelled residents in the flood</td><td>${fmtInt(s.population.inFlood)} (GHS-POP 2025; not people affected)</td></tr></table>
+    <tr><td>Modelled residents in the flood</td><td>${s.validPixels > 0 && s.population.pixelsWithoutPopulation >= s.validPixels ? esc(m.populationNote || 'No GHS-POP population data for this area') : `${fmtInt(s.population.inFlood)} (GHS-POP 2025; not people affected)`}</td></tr></table>
     <h2>Flooded land cover</h2><table>${lc || '<tr><td>none</td></tr>'}</table>
     ${zn ? `<h2>By administrative area</h2><table><tr><th>Area</th><th>Flooded</th><th>Modelled residents</th></tr>${zn}</table>` : ''}
     <h2>Processing</h2><table>
