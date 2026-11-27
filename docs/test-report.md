@@ -68,3 +68,19 @@ A separate review agent read the code and docs and fuzzed the tracer. It found n
 Changes in 1.1.1: the Areas tab gives the reason when administrative areas could not be loaded, and the boundary requests time out (20 s and 30 s); the land-cover sentence says "the largest share" rather than "most"; the minus sign is applied to the threshold only, so the satellite name keeps its hyphen; summary CSV numbers are written to six decimal places at most; the medium-confidence legend row says it is shown with the row above. The analysis is unchanged.
 
 Phone map overlays (after 1.1.1, same version): at 860 px and below the scale bar sits bottom-left above the Legend chip, the map credits start closed behind the i button, and layer chips stay in one scrolling row. Checked at 390 px after an example run: no overlapping overlays; axe 0 violations.
+
+## Version 1.2.0 (interface rebuilt), 27 November 2026
+
+| # | Test | Expected | Result | Status |
+|---|---|---|---|---|
+| 30 | `npm test` (unit tests, trace test, new `tests/stac_fields_test.mjs`) | all pass | all pass | Pass |
+| 31 | `tests/fixture_lokoja.mjs` after the `epsgOf` change | 11 values and the class-grid hash unchanged | identical | Pass |
+| 32 | `tests/browser_e2e.cjs`, 1440 × 900: Lokoja example from the opening screen | same figures as 1.1.1 | 34 s; 22.4 km² of new water, 19.4 km² high confidence, 4,987 modelled residents, UNOSAT note shown, 4 administrative areas | Pass |
+| 33 | Same run: pixel values on click, layer switch and radar swipe, five file exports and the share link | values and files | all shown or written; the share link reproduces 22.4 km² | Pass |
+| 34 | Threshold dragged to −20 dB | area falls as in the sensitivity test | 9.62 km² ("Set by you at −20.0 dB") | Pass |
+| 35 | 390 px phone: search "Lokoja", tour, a recent pair (29 September and 16 November 2026, ascending orbit 30), run | result, no horizontal scroll | 7.36 km² of new water; 0 px overflow on every screen | Pass |
+| 36 | Console errors across both runs | none | none | Pass |
+
+Test 35 failed before the fix: Sentinel-1 items from 2025 on carry `proj:code` instead of `proj:epsg`, and the run stopped with "Unsupported CRS EPSG:undefined". The 2026 pair in test 35 is a functional check, not a flood; most of its 7.36 km² is medium confidence (0.03 km² high). It was not checked against any other source.
+
+Not checked in 1.2.0: the printed report, screen readers, real touch devices and drawing by touch.

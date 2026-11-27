@@ -15,6 +15,12 @@ Example: the Niger–Benue confluence at Lokoja, Nigeria.
 - Inputs: 2 August → 13 October 2022, an analysed area of 274.5 km².
 - Results: 22.4 km² of new water, 19.4 km² of it high confidence, with about 4,990 modelled residents.
 
+## Use it
+
+1. **Place.** Search a town or river on the opening screen, draw a box, or open the Lokoja example. A three-screen tour explains the steps on first use; "How it works" reopens it.
+2. **Images.** The dates default to the last 60 days; set them around the flood. Tap a radar image before the flood, then one after it on the same track. Rules and the administrative-area switch are under Advanced settings.
+3. **Result.** The area of new water, the modelled residents and the flooded land cover, with a histogram to drag the water threshold and test the result. Export: report, map PNG, GeoJSON, GeoTIFF, statistics CSV, processing record and a share link.
+
 ## How it decides
 
 A pixel is flood water if both hold:
@@ -41,7 +47,7 @@ Results are in [docs/test-report.md](docs/test-report.md).
 
 | Path | What |
 |---|---|
-| `index.html`, `css/dash.css` (shared with GeoValidate and AgroSignal), `css/floodscope.css` | Page |
+| `index.html`, `css/app.css`, `js/app.js` | Page: landing, three steps (place, radar images, result), map, export |
 | `js/app.js` | Interface: map, steps, results, exports |
 | `js/worker.js` | Web Worker that holds the arrays of the current run |
 | `js/pipeline.js` | The analysis: acquisitions, reading, classification, summaries |
