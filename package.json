@@ -1,12 +1,12 @@
 {
   "name": "floodscope",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "description": "Flood extent and exposure from Sentinel-1, computed in the browser",
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "node tests/engine_test.mjs && node tests/trace_test.mjs",
+    "test": "node tests/engine_test.mjs && node tests/trace_test.mjs && node tests/stac_fields_test.mjs",
     "serve": "npx http-server . -p 8765 -s --cors -c-1",
     "test:fixture": "node tests/fixture_lokoja.mjs"
   }

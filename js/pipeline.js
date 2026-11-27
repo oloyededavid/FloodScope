@@ -9,6 +9,9 @@ export { VERSION };
 /** Sentinel-1 RTC acquisitions over a lon/lat bbox. Slices of one datatake (same day, platform, relative orbit and pass)
     are merged into one acquisition, so an area that straddles two slices is read from both. Scenes without VV (HH/HV over
     polar regions) are left out. Returns {list, truncated}. */
+// the EPSG code of a STAC item: projection extension v1 gives proj:epsg (32632); v2, used by newer Sentinel-1 items, gives proj:code ("EPSG:32632")
+export const epsgOf = p => { if (p['proj:epsg'] != null) return p['proj:epsg']; const m = /^EPSG:(\d+)$/.exec(p['proj:code'] || ''); return m ? +m[1] : undefined; };
+
 export async function listAcquisitions(bbox, start, end, signal) {
   const MAX = 400;
   const items = await stacSearch({ collections: ['sentinel-1-rtc'], bbox, datetime: `${start}/${end}`,
@@ -20,7 +23,7 @@ export async function listAcquisitions(bbox, start, end, signal) {
     let g = groups.get(key);
     if (!g) {
       g = { id: it.id, ids: [], datetime: p.datetime, platform: p.platform, orbitState: p['sat:orbit_state'], relativeOrbit: p['sat:relative_orbit'],
-            epsg: p['proj:epsg'], vv: [], vh: [] };
+            epsg: epsgOf(p), vv: [], vh: [] };
       groups.set(key, g);
     }
     g.ids.push(it.id); g.vv.push(it.assets.vv.href); if (it.assets.vh) g.vh.push(it.assets.vh.href);
