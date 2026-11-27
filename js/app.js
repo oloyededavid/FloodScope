@@ -118,7 +118,7 @@ const ringOf = b => [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]], [b[
 function areaKm2(b) { const R = 6371.0088, r = Math.PI / 180; return R * R * Math.abs((b[2] - b[0]) * r) * Math.abs(Math.sin(b[3] * r) - Math.sin(b[1] * r)); }
 let searchSeq = 0;
 async function setAoi(b, label, note) {
-  if (running) { worker.postMessage({ cmd: 'cancel', id: 0 }); runSeq++; running = false; }   // a new place ends the running analysis
+  if (running) { worker.postMessage({ cmd: 'cancel', id: 0 }); runSeq++; running = false; if (S.view === 'running') show('place'); }   // a new place ends the running analysis
   S.example = false;
   const shift = Math.round(((b[0] + b[2]) / 2) / 360) * 360;   // the map repeats the world sideways
   b = [b[0] - shift, b[1], b[2] - shift, b[3]];
@@ -213,7 +213,7 @@ function defaultDates() {   // the last 60 days: a recent flood is the common ca
   $('pick-info').textContent = 'Set the dates around the flood, then find the images.';
 }
 defaultDates();
-['d0', 'd1'].forEach(id => $(id).addEventListener('change', () => { S.searched = null; S.acq = []; S.pre = S.post = null; renderTimeline(); updateRun(); }));
+['d0', 'd1'].forEach(id => $(id).addEventListener('change', () => { S.searched = null; S.acq = []; S.pre = S.post = null; if (S.result) clearResult(); renderTimeline(); updateRun(); }));
 $('list').addEventListener('click', listImages);
 async function listImages() {
   if (!S.aoi || !S.aoi.ok) return;
@@ -258,8 +258,9 @@ function renderTimeline() {
     box.append(t); el.append(box);
   }
   const canPair = [...groups.values()].some(g => g.length > 1);
-  info.innerHTML = !canPair ? '<span class="warn">Each track has only one image, so no pair can be made. Widen the dates.</span>'
-    : !S.pre ? 'Tap the image <b>before</b> the flood.' : !S.post ? 'Now tap the image <b>after</b> the flood, on the same track.' : 'Ready. Tap any date to start the pair again.';
+  info.innerHTML = (S.searched && S.searched.truncated ? '<span class="warn">Only the first 400 scenes are listed; shorten the dates to see later ones.</span> ' : '')
+    + (!canPair ? '<span class="warn">Each track has only one image, so no pair can be made. Widen the dates.</span>'
+    : !S.pre ? 'Tap the image <b>before</b> the flood.' : !S.post ? 'Now tap the image <b>after</b> the flood, on the same track.' : 'Ready. Tap any date to start the pair again.');
   if (S.pre) $('pair').innerHTML = `<div><span>Before</span><br><b>${day(S.pre.datetime)}</b></div><div><span>After</span><br><b>${S.post ? day(S.post.datetime) : '—'}</b></div>`
     + (S.post ? `<div class="gap">${Math.round((Date.parse(S.post.datetime) - Date.parse(S.pre.datetime)) / 864e5)} days apart · ${esc(trackKey(S.pre))}</div>` : '');
 }
@@ -279,20 +280,22 @@ const outs = { 'p-thr': ['o-thr', v => `${fmt(v)} dB`], 'p-chg': ['o-chg', v => 
 for (const [id, [o, f]] of Object.entries(outs)) $(id).addEventListener('input', () => {
   $(o).textContent = neg(f(+$(id).value));
   if (id === 'p-thr') $('p-auto').checked = false;
+  if (S.result && S.view !== 'result') { clearResult(); return; }   // changed in Advanced settings: run again rather than alter a result that is not on screen
   if (S.result) scheduleReclassify(id === 'p-thr' ? { threshold: +$('p-thr').value } : {});
 });
+['p-auto', 'p-zones'].forEach(id => $(id).addEventListener('change', () => { if (S.result) clearResult(); }));
 
 // ---------------------------------------------------------------- run
 const STAGES = ['read', 'layers', 'people', 'map'];
 function stage(k) { const i = STAGES.indexOf(k); document.querySelectorAll('#stages li').forEach(li => { const j = STAGES.indexOf(li.dataset.k); li.className = j < i ? 'ok' : j === i ? 'on' : ''; }); }
 const STEPS_EXPECTED = 14;   // progress messages in a typical run (pipeline.runAnalysis), used only for the bar
 $('run').addEventListener('click', runNow);
-$('cancel').addEventListener('click', () => worker.postMessage({ cmd: 'cancel', id: 0 }));
+$('cancel').addEventListener('click', () => { worker.postMessage({ cmd: 'cancel', id: 0 }); runSeq++; running = false; show('images'); });   // also ends a run still waiting for the administrative areas
 async function runNow() {
   if (running || !S.aoi || !S.pre || !S.post) return;
   const aoi = S.aoi, pre = S.pre, post = S.post, mine = ++runSeq;   // fixed for this run, even if the inputs change while it runs
   clearTimeout(rcTimer); rcSeq++; if (S.result) clearResult();
-  running = true; show('running'); stage('read'); $('bar').style.width = '3%';
+  running = true; S.runDates = { d0: $('d0').value, d1: $('d1').value }; show('running'); stage('read'); $('bar').style.width = '3%';
   $('run-what').textContent = `${aoi.label} · ${day(pre.datetime)} to ${day(post.datetime)}`;
   if (PHONE) $('app').querySelector('.panel').scrollIntoView({ behavior: 'smooth' });
   let n = 0, zones = null; S.zonesError = $('p-zones').checked ? null : 'off'; S.log = [];
@@ -329,7 +332,7 @@ function scheduleReclassify(extra) {
     if (running || !S.result) return;
     const p = P(), params = { changeDb: p.changeDb, slopeMax: p.slopeMax, permanentOccurrence: p.permanentOccurrence, ...extra };
     const mine = ++rcSeq;
-    try { const r = await ask('reclassify', { params }); if (mine !== rcSeq || running) return; S.result = r; await drawResult(r, false); shareUrl(); } catch (e) { $('thr-note').textContent = e.message; }
+    try { const r = await ask('reclassify', { params }); if (mine !== rcSeq || running) return; S.result = r; await drawResult(r, false); shareUrl(); } catch (e) { if (mine === rcSeq && !running) $('thr-note').textContent = e.message; }
   }, 60);
 }
 
@@ -459,12 +462,12 @@ function renderSummary(r) {
   const lc = Object.entries(s.landcoverKm2 || {}).filter(([k]) => +k !== 80).sort((x, y) => y[1] - x[1])[0];
   $('r-reading').textContent = a.flood > 0
     ? `${fmt(share)}% of the ground the radar could see turned to water${lc && lc[1] > 0 ? `, most of it on ${(WORLDCOVER[lc[0]] || 'unclassified land').toLowerCase()}` : ''}.${noPop(s) ? '' : ` About ${fmtInt(p.inFlood)} people are modelled to live inside it.`}`
-    : 'No ground turned to open water between the two images with these rules. Try another pair, or a lower threshold below.';
+    : 'No ground turned to open water between the two images with these rules. Try another pair, or drag the threshold below to the right (less negative) to count more water.';
   const stat = (l, v, d) => `<div class="stat"><div class="l">${l}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
   $('r-stats').innerHTML = stat('New water', `${fmt(a.flood, a.flood < 10 ? 2 : 1)}<small>km²</small>`, `${fmt(share)}% of the area`)
     + stat('High confidence', `${fmt(a.floodHigh, a.floodHigh < 10 ? 2 : 1)}<small>km²</small>`, vh ? 'both radar bands' : 'no VH band')
     + stat('Residents', noPop(s) ? '—' : fmtInt(p.inFlood), noPop(s) ? 'no population data' : 'modelled estimate');
-  const ex = EXAMPLES[0], isExample = S.example && m.pre.datetime.startsWith(ex.pre) && m.post.datetime.startsWith(ex.post) && Math.abs(r.params.threshold + 18) < 1e-6;
+  const ex = EXAMPLES[0], isExample = S.example && m.pre.datetime.startsWith(ex.pre) && m.post.datetime.startsWith(ex.post) && Math.abs(r.params.threshold + 18) < 1e-6 && r.params.changeDb === -3 && r.params.slopeMax === 5 && r.params.permanentOccurrence === 80;
   $('r-example').hidden = !isExample;
   if (isExample) $('r-example').textContent = 'Checked against UNOSAT: 99.9% of the water mapped here is also water in UNOSAT\'s independent VIIRS flood map of 13–17 October 2022, while FloodScope finds 50.2% of UNOSAT\'s water. Agreement is not accuracy.';
 }
@@ -561,7 +564,7 @@ $('new-run').addEventListener('click', () => show('place'));
 function shareUrl() {
   const r = S.result; if (!r) return location.href;
   const u = new URL(location.href.split('#')[0]); u.search = '';
-  const q = { bbox: S.aoi.bbox.map(v => v.toFixed(5)).join(','), label: S.aoi.label || '', from: $('d0').value, to: $('d1').value, pre: r.meta.pre.id, post: r.meta.post.id,
+  const q = { bbox: S.aoi.bbox.map(v => v.toFixed(5)).join(','), label: S.aoi.label || '', from: (S.runDates || {}).d0 || $('d0').value, to: (S.runDates || {}).d1 || $('d1').value, pre: r.meta.pre.id, post: r.meta.post.id,
     auto: $('p-auto').checked ? 1 : 0, thr: r.params.threshold, chg: r.params.changeDb, slope: r.params.slopeMax, occ: r.params.permanentOccurrence };
   Object.entries(q).forEach(([k, v]) => u.searchParams.set(k, v)); history.replaceState(null, '', u); return u.href;
 }
@@ -595,14 +598,14 @@ async function mapPng() {
   const lines = [[F(13, 500), '#15171c', 17, `FloodScope · ${m.label || 'Area'} · new water between ${m.pre.datetime.slice(0, 10)} and ${m.post.datetime.slice(0, 10)}: ${fmt(a.flood, 2)} km²`],
     [F(10.5), '#4a505c', 14, neg(`Sentinel-1 ${m.post.orbitState} orbit ${m.post.relativeOrbit}; VV after below ${fmt(r.params.threshold)} dB and at least ${fmt(-r.params.changeDb)} dB darker; slope ≤ ${r.params.slopeMax}°; permanent water (JRC ≥ ${r.params.permanentOccurrence}%) excluded. FloodScope ${m.version}.`)],
     [F(10.5), '#4a505c', 14, 'Limits: water under canopy, between buildings or gone before the second image is missed; not confirmed on the ground.'],
-    [F(10.5), '#4a505c', 14, 'Data: Sentinel-1 RTC (Planetary Computer, modified Copernicus Sentinel data), JRC GSW, Copernicus DEM, ESA WorldCover. Basemap © OpenStreetMap contributors, OpenFreeMap.']];
+    [F(10.5), '#4a505c', 14, `Data: Sentinel-1 RTC (Planetary Computer, modified Copernicus Sentinel data), JRC GSW, Copernicus DEM, ESA WorldCover. Basemap © OpenStreetMap contributors, OpenFreeMap${visible.s2 ? '; Sentinel-2 cloudless 2024 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024)' : ''}.`]];
   const meas = c.getContext('2d'), wrapped = [];
   for (const [font, col, lh, text] of lines) { meas.font = font; let cur = ''; for (const w of text.split(' ')) { const t = cur ? cur + ' ' + w : w; if (meas.measureText(t).width > src.width - 20 * dpr && cur) { wrapped.push([font, col, lh, cur]); cur = w; } else cur = t; } wrapped.push([font, col, lh, cur]); }
   const foot = (14 + wrapped.reduce((n, l) => n + l[2], 0)) * dpr;
   c.width = src.width; c.height = src.height + foot;
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(src, 0, 0);
   const rows = [[COLORS[2], 'Flood, high confidence', visible.flood], [COLORS[3], 'Flood, medium confidence', visible.flood], [COLORS[4], 'Permanent water', visible.perm],
-    [COLORS[6], 'Water before the event', visible.before], [COLORS[5], 'Excluded: slope', visible.steep]].filter(x => x[2]);
+    [COLORS[6], 'Water before the event', visible.before], [COLORS[5], 'Excluded: slope', visible.steep], [[128, 128, 128, 255], `Radar, before | after (${swipeAt}% split)`, visible.radar]].filter(x => x[2]);
   const lw = 190 * dpr, lh = (14 + rows.length * 17) * dpr, lx = 10 * dpr, ly = src.height - lh - 10 * dpr;
   ctx.fillStyle = 'rgba(255,255,255,.94)'; ctx.fillRect(lx, ly, lw, lh); ctx.strokeStyle = '#d5d9de'; ctx.lineWidth = dpr; ctx.strokeRect(lx, ly, lw, lh);
   rows.forEach(([col, t], i) => { const y = ly + (10 + i * 17) * dpr; ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${col[3] / 255})`; ctx.fillRect(lx + 8 * dpr, y, 10 * dpr, 10 * dpr);
@@ -637,6 +640,7 @@ async function printReport() {
     <tr><td>Rule</td><td>VV after &lt; ${fmt(r.params.threshold)} dB (${esc(r.threshold.source)}) and VV change ≤ ${fmt(r.params.changeDb)} dB; slope ≤ ${r.params.slopeMax}°; permanent water at ≥ ${r.params.permanentOccurrence}% occurrence excluded; ${r.params.speckleWindow} × ${r.params.speckleWindow} speckle mean</td></tr>
     <tr><td>Software</td><td>FloodScope ${esc(m.version)}, run ${esc(m.runAt)}</td></tr></table>
     <p>${Object.values(m.sources).filter(Boolean).map(esc).join(' · ')}</p>
+    <p>Basemap © OpenStreetMap contributors, OpenFreeMap${visible.s2 ? '; Sentinel-2 cloudless 2024 by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2024)' : ''}.</p>
     <p>Limits: radar misses water under canopy and between buildings, and smooth dry surfaces can look like water. No ground truth was used.</p>`;
   await new Promise(res => { const im = $('report').querySelector('img'); im.complete ? res() : (im.onload = res); });
   window.print();
@@ -652,7 +656,9 @@ async function runExample(e) {
   await listImages(); show('images');
   const pre = S.acq.find(a => a.datetime.startsWith(e.pre)), post = S.acq.find(a => a.datetime.startsWith(e.post));
   if (!pre || !post) { $('err-msg').textContent = 'The example images could not be found in the archive right now. Try again later, or choose another pair.'; show('error'); return; }
-  pick(pre); pick(post); S.example = true; runNow();
+  pick(pre); pick(post); S.example = true;
+  if (!S.post) { $('err-msg').textContent = 'The example images are not on the same track in the archive right now. Choose a pair yourself.'; show('error'); return; }
+  runNow();
 }
 $('about-open').addEventListener('click', () => $('about').showModal());
 document.querySelectorAll('dialog').forEach(d => {
@@ -684,5 +690,7 @@ show('place');
   await listImages(); show('images');
   const pre = S.acq.find(a => a.id === q.get('pre')), post = S.acq.find(a => a.id === q.get('post'));
   if (!pre || !post) { $('pick-info').textContent = 'The images in this link are no longer listed in the archive. Choose a pair.'; return; }
-  pick(pre); pick(post); runNow();
+  pick(pre); pick(post);
+  if (!S.post) { $('pick-info').textContent = 'The images in this link no longer form a pair in the archive. Choose a pair.'; return; }
+  runNow();
 })();
